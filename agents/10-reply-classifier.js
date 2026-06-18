@@ -131,5 +131,38 @@ Return: {
   }
 }
 
-module.exports = { classifyReplies };
+
+/**
+ * Classify a single reply in real-time (for event-driven server)
+ * Called by reply-server.js immediately when webhook fires
+ */
+async function classifySingleReply(reply) {
+  const body = reply.body || '';
+  const subject = reply.subject || '';
+  const source = reply.source || 'email';
+
+  const prompt = `Classify this ${source} reply from a General Contractor to a SubDraw outreach.
+
+Reply:
+Subject: ${subject}
+Message: ${body}
+
+Return JSON only:
+{
+  "category": "one of the 12 categories",
+  "confidence": "high|medium|low",
+  "note": "brief note on why + any key info (date mentioned, competitor named, question asked)",
+  "follow_up_date": "ISO date string if they mentioned a specific time, else null",
+  "urgency": "high|medium|low"
+}`;
+
+  try {
+    const result = JSON.parse(await callClaude(SYSTEM, prompt));
+    return result;
+  } catch(e) {
+    return { category: 'interested', confidence: 'low', note: 'Parse error — defaulting to interested', follow_up_date: null, urgency: 'medium' };
+  }
+}
+
+module.exports = { classifyReplies, classifySingleReply };
 if (require.main === module) classifyReplies().then(r => console.log('[Agent 10] Done:', r.length, 'replies'));
