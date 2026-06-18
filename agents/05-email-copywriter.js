@@ -1,10 +1,11 @@
 /**
  * Agent 05: Email Copywriter
  * Writes personalized cold email + 3 follow-ups for SubDraw GC outreach
- * Key: Talk like a construction person, not a tech salesperson
+ * CTA is always the self-guided demo link — no calls, no scheduling
  */
 require('dotenv').config({ path: './config/.env' });
 const { callClaude, logRun } = require('../utils/helpers');
+const icp = require('../config/icp.json');
 
 const SYSTEM = `You are a direct-response copywriter for SubDraw, construction draw management software.
 
@@ -15,14 +16,14 @@ Rules:
 - Open with the personalization hook — never "I hope this finds you well"
 - Speak the GC language: draws, lenders, subs, retainage, lien waivers, approvals
 - ONE pain point, ONE value prop, ONE CTA
-- CTA = specific ask ("free 15 min Thursday?" not "let's connect")
-- Never say: "synergy", "leverage", "touch base", "circle back", "streamline your workflow"
+- CTA is ALWAYS the demo link: subdraw.com/login — frame it as "see it in 8 minutes" or "try it free"
+- Never try to book a call or meeting — the product sells itself
+- Never say: "synergy", "leverage", "touch base", "circle back", "streamline"
 - Sound like a contractor talking to another contractor
 Return JSON only.`;
 
 async function writeSequence(prospect) {
   const { personalization, intel, screening } = prospect;
-  const planPrice = intel?.recommended_plan?.split('_')[1] || '149';
 
   const prompt = `Write a 4-email cold outreach sequence for this GC:
 
@@ -32,13 +33,19 @@ Hook: "${personalization?.hook || 'GC in ' + prospect.city}"
 Pain point: ${screening?.pain_point || intel?.primary_pain || 'managing draws manually'}
 Current tool: ${intel?.current_tool || 'spreadsheets'}
 Approach: ${intel?.approach_angle || 'save time on draw approvals'}
-Plan fit: $${planPrice}/mo
+Demo URL: ${icp.product.demo_url}
 
 Write:
-1. Cold email (under 100 words) — lead with hook, one pain, one value prop, CTA
-2. Follow-up day 3 (under 75 words) — softer, different angle
-3. Follow-up day 7 (under 75 words) — add social proof or stat
-4. Breakup email day 14 (under 50 words) — close the loop, leave door open
+1. Cold email (under 100 words) — hook + one pain + one value prop + CTA to demo link
+2. Follow-up day 3 (under 75 words) — different angle, same demo CTA
+3. Follow-up day 7 (under 75 words) — add a specific result or stat, demo CTA
+4. Breakup email day 14 (under 50 words) — leave door open, one last demo mention
+
+CTA examples to rotate:
+- "See how it works in 8 minutes — subdraw.com/login"
+- "Try it free — subdraw.com/login"  
+- "No call needed. See the full thing — subdraw.com/login"
+- "Built for GCs. Try it yourself — subdraw.com/login"
 
 Return JSON:
 {

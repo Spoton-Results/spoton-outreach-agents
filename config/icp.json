@@ -2,10 +2,18 @@
   "product": {
     "name": "SubDraw",
     "url": "subdraw.com",
+    "demo_url": "https://subdraw.com/login",
+    "demo_cta_options": [
+      "See how it works in 8 minutes — subdraw.com/login",
+      "Try it free — subdraw.com/login",
+      "Built for GCs. See it yourself — subdraw.com/login",
+      "No call needed. See the full thing here — subdraw.com/login"
+    ],
+    "funnel": "cold_email → demo_link → free_account → self_guided_demo → paid_plan",
     "plans": {
-      "starter": { "price": 149 },
-      "professional": { "price": 299 },
-      "scale": { "price": 599 }
+      "starter": { "price": 149, "label": "Starter" },
+      "professional": { "price": 299, "label": "Professional" },
+      "scale": { "price": 599, "label": "Scale" }
     },
     "value_props": [
       "Eliminates manual draw tracking in spreadsheets",
@@ -23,8 +31,8 @@
     ]
   },
   "ideal_customer_profile": {
-    "titles": ["owner", "president", "principal", "project manager", "operations manager", "founder"],
-    "industries": ["general contractor", "construction", "homebuilder", "commercial contractor"],
+    "titles": ["owner", "president", "principal", "project manager", "operations manager", "founder", "managing partner"],
+    "industries": ["general contractor", "construction", "homebuilder", "commercial contractor", "residential contractor"],
     "company_size": { "min": 2, "max": 150 },
     "disqualifiers": [
       "solo handyman no GC license",

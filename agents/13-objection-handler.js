@@ -1,35 +1,38 @@
 /**
  * Agent 13: Objection Handler
- * Responds to GC-specific objections confidently and briefly
- * Runs as part of the reply classifier workflow
+ * Handles GC objections and routes them to the demo — no calls
+ * Answer the objection briefly, then get them to subdraw.com/login
  */
 require('dotenv').config({ path: './config/.env' });
 const { callClaude, callGHL, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
 const SYSTEM = `You are an objection handling agent for SubDraw construction draw software.
-Write confident, concise responses to GC objections. Under 75 words. Acknowledge, reframe, ask for one next step.
+Handle the objection briefly and confidently, then point them to the free demo.
+Under 75 words. Never try to book a call. The demo closes the deal.
 
 SubDraw objection playbook:
-- "We use spreadsheets" → Most GCs do. SubDraw started as a spreadsheet fix. Takes 20 min to show you the difference.
-- "We use Buildertrend/Procore" → SubDraw focuses only on the draw process — deeper than what those tools offer for lender-required draws.
-- "Too expensive" → Most users save 3-5 hours per draw. At your billing rate that pays for itself on the first draw.
-- "Too busy" → That's exactly why — takes 20 min to show you. I'll make it worth your time.
-- "Not interested" → Fair enough. Mind if I check back in 60 days? Timing matters in construction.
+- "We use spreadsheets" → Most GCs do. That's exactly what SubDraw replaces. See it in 8 min — subdraw.com/login
+- "We use Buildertrend/Procore" → Those tools aren't built around lender draw requests. SubDraw is. Worth 8 minutes — subdraw.com/login
+- "Too expensive" → Free to try. Most users save more than $149 on the first draw cycle alone — subdraw.com/login
+- "Too busy" → Built for that. No call, no demo request. See the whole thing yourself in 8 min — subdraw.com/login
+- "Not interested" → Fair. If draw management ever becomes a headache, we'll be here — subdraw.com/login
 Return JSON only.`;
 
 async function handleObjection(reply) {
-  const prompt = `Write a response to this GC objection to SubDraw:
+  const prompt = `Handle this GC objection and point them to the SubDraw demo:
 
 Reply: "${reply.body?.substring(0, 300)}"
-Objection details: ${reply.classification?.key_info || 'general objection'}
+Objection: ${reply.classification?.key_info || 'general objection'}
 From: ${reply.from_address}
+Demo URL: ${icp.product.demo_url}
+
+Acknowledge, reframe briefly, end with demo link. No call ask.
 
 Return: { "subject": "Re: ...", "body": "..." }`;
 
   const response = JSON.parse(await callClaude(SYSTEM, prompt));
 
-  // Send via GHL
   try {
     const contacts = await callGHL('GET', '/contacts/?email=' + encodeURIComponent(reply.from_address) + '&locationId=' + (process.env.GHL_LOCATION_ID || icp.ghl.location_id));
     const contactId = contacts.contacts?.[0]?.id;
@@ -43,7 +46,7 @@ Return: { "subject": "Re: ...", "body": "..." }`;
       });
     }
   } catch (e) {
-    console.error('[Agent 13] GHL send error: ' + e.message);
+    console.error('[Agent 13] GHL error: ' + e.message);
   }
 
   logRun('13-objection-handler', { handled_for: reply.from_address });
