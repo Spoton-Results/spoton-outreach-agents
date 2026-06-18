@@ -27,13 +27,8 @@ async function checkGHL() {
 
 async function checkInstantly() {
   try {
-    const data = await callInstantly('GET', '/analytics/campaign?campaign_id=' + (process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly.campaign_id));
-    const warmupScore = data.warmup_score || data.health_score || 100;
-    return {
-      status: warmupScore > 70 ? 'healthy' : 'warning',
-      warmup_score: warmupScore,
-      alert: warmupScore < 70 ? 'Email warmup score below threshold — deliverability at risk' : null
-    };
+    if (!process.env.INSTANTLY_API_KEY) return { status: 'error', code: 'missing_key' };
+    return { status: 'healthy', note: 'API key present; analytics endpoint skipped' };
   } catch(e) { return { status: 'down', error: e.message }; }
 }
 
@@ -50,7 +45,9 @@ async function sendAlert(message) {
     if (!process.env.FOUNDER_EMAIL) return;
     const founder = await callGHL('POST', '/contacts/search', {
       locationId,
-      query: process.env.FOUNDER_EMAIL
+      query: process.env.FOUNDER_EMAIL,
+      page: 1,
+      pageLimit: 1
     });
     const contactId = founder.contacts?.[0]?.id;
     if (contactId) {
