@@ -1,0 +1,18 @@
+{
+  "name": "subdraw-agents",
+  "version": "1.0.0",
+  "description": "13-agent autonomous outreach system for SubDraw — construction draw management SaaS",
+  "main": "scripts/run-pipeline.js",
+  "scripts": {
+    "swarm": "node scripts/run-pipeline.js",
+    "prospect": "node scripts/run-pipeline.js --mode prospect",
+    "outreach": "node scripts/run-pipeline.js --mode outreach",
+    "replies": "node scripts/run-pipeline.js --mode replies",
+    "monitor": "node scripts/run-pipeline.js --mode monitor"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": { "node": ">=18.0.0" }
+}

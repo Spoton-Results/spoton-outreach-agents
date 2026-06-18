@@ -1,0 +1,54 @@
+{
+  "product": {
+    "name": "SubDraw",
+    "url": "subdraw.com",
+    "plans": {
+      "starter": { "price": 149 },
+      "professional": { "price": 299 },
+      "scale": { "price": 599 }
+    },
+    "value_props": [
+      "Eliminates manual draw tracking in spreadsheets",
+      "Faster lender approvals — docs organized automatically",
+      "Real-time draw status for owners, subs, and lenders",
+      "Reduces draw cycle from weeks to days",
+      "No more chasing lien waivers manually"
+    ],
+    "pain_points": [
+      "Managing draws in spreadsheets or email chains",
+      "Slow lender approvals due to disorganized documentation",
+      "Chasing subcontractors for lien waivers",
+      "No visibility into draw status for project owners",
+      "Manual retainage tracking errors"
+    ]
+  },
+  "ideal_customer_profile": {
+    "titles": ["owner", "president", "principal", "project manager", "operations manager", "founder"],
+    "industries": ["general contractor", "construction", "homebuilder", "commercial contractor"],
+    "company_size": { "min": 2, "max": 150 },
+    "disqualifiers": [
+      "solo handyman no GC license",
+      "no active projects",
+      "enterprise 500+ employees",
+      "government-only contractor",
+      "already using Procore draw module heavily"
+    ],
+    "plan_targeting": {
+      "starter_149": "1-3 active projects, small GC, owner-operated",
+      "professional_299": "4-10 active projects, small team, growing",
+      "scale_599": "10+ active projects, multiple PMs, needs automation"
+    }
+  },
+  "ghl": {
+    "location_id": "oe1TpmlDynQGFNdYLkaK",
+    "pipeline_id": "lu4BTmjYjJC2hZVKxj1t",
+    "stages": {
+      "cold": "751975e9-c7f2-46a4-b821-e053bf505d8a",
+      "emailed": "a9cb193d-c634-41e2-b7eb-e0c6a24065ca",
+      "replied": "32e745b6-97f5-4ad1-8b59-4652995f2176"
+    }
+  },
+  "instantly": {
+    "campaign_id": "bb1d4655-8d06-4218-89d4-ec196bc8ca81"
+  }
+}
