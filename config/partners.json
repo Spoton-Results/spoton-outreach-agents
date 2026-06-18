@@ -3,32 +3,30 @@
     "types": [
       {
         "type": "construction_lender",
-        "titles": ["loan officer", "construction loan officer", "VP of lending", "portfolio manager", "relationship manager"],
-        "companies": ["regional bank", "credit union", "community bank", "construction lender", "private lender"],
-        "pitch": "Your GC clients are still submitting draw requests by email and spreadsheet. SubDraw gives them a professional draw portal AND gives you a live dashboard to track every draw across your portfolio.",
-        "pain_point": "chasing GCs for draw documentation and compliance paperwork"
+        "titles": ["loan officer", "construction loan officer", "VP of lending", "portfolio manager", "relationship manager", "credit officer"],
+        "pitch": "SubDraw gives you a complete audit trail for every draw your GC borrowers submit — approved amounts, supporting docs, lien waivers, and payment status. No more chasing GCs for draw packages. Your GC clients submit lender-ready documentation automatically.",
+        "pain_point": "GC borrowers submitting incomplete draw packages, missing lien waivers, and disorganized documentation that delays funding"
       },
       {
         "type": "title_company",
-        "titles": ["owner", "escrow officer", "title officer", "branch manager", "operations manager"],
-        "pitch": "When draws are disorganized, closings get delayed. SubDraw puts all draw docs in one place — your GC clients show up prepared.",
-        "pain_point": "incomplete or missing draw documentation at closing"
+        "titles": ["owner", "escrow officer", "title officer", "branch manager", "settlement agent"],
+        "pitch": "SubDraw collects and stores all lien waivers, invoices, and payment documentation directly from subcontractors. When your GC clients close, their documentation is complete — not assembled at the last minute from email threads.",
+        "pain_point": "Missing lien waivers and incomplete payment documentation from GC clients at closing"
       },
       {
         "type": "construction_cpa",
-        "titles": ["CPA", "accountant", "controller", "CFO", "partner", "managing partner"],
-        "companies": ["accounting firm", "CPA firm", "construction accounting"],
-        "pitch": "Your GC clients are doing draw reconciliation manually in spreadsheets. SubDraw automates the paper trail — cleaner books for you, less headache for them.",
-        "pain_point": "reconciling draw payments with job costs manually"
+        "titles": ["CPA", "accountant", "controller", "CFO", "partner", "managing partner", "tax advisor"],
+        "pitch": "SubDraw gives your GC clients a complete payment audit trail — every pay application, approval, retainage calculation, and change order documented. Cleaner job costing data, automatic retainage tracking, and exportable records for tax season.",
+        "pain_point": "GC clients with messy job costing records, manual retainage calculations, and no documentation trail for subcontractor payments"
       },
       {
         "type": "surety_bond_agent",
-        "titles": ["surety agent", "bond agent", "insurance agent", "broker"],
-        "pitch": "Bonded GCs with organized draw documentation get better rates and faster approvals. SubDraw is the paper trail that proves they run a tight operation.",
-        "pain_point": "GC clients lacking documentation for bond renewals"
+        "titles": ["surety agent", "bond agent", "insurance agent", "broker", "underwriter"],
+        "pitch": "GCs using SubDraw have documented proof of controlled subcontract billing, retainage management, and payment history. That's the kind of organized operation that gets better bond terms.",
+        "pain_point": "GC clients lacking documentation and payment controls that underwriters want to see"
       }
     ],
-    "referral_offer": "Your clients get their first month free. You get credited as the referral source.",
+    "referral_offer": "Your GC clients get their first month free. You get recognized as the referral source in their account.",
     "partner_demo_url": "https://subdraw.com/login"
   }
 }

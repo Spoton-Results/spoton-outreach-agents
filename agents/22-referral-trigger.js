@@ -1,31 +1,32 @@
 /**
- * Agent 22: Referral Trigger Agent
- * 30 days after upgrade to paid — asks for referral
- * GCs talk to each other constantly. One referral = free pipeline.
- * Runs daily, checks for customers who hit 30-day mark
+ * Agent 22: Referral Trigger — REBUILT
+ * 30-day customers asked for referrals with SubDraw-specific context
+ * Highlights: subs join free, which means referred GC's subs come onboard automatically
+ * That sub network effect is the best referral hook
  */
 require('dotenv').config({ path: './config/.env' });
 const { callClaude, callGHL, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
-const SYSTEM = `You are a referral agent for SubDraw construction draw software.
-Write a short, genuine referral request to a happy customer.
-They've been using SubDraw for 30 days — they know if it works.
-Sound human. One ask. Under 75 words. No corporate language.
-Return JSON only.`;
+const SYSTEM = `You are a referral agent for SubDraw construction draw management software.
+Write a short referral request to a happy 30-day customer.
+
+KEY REFERRAL HOOK: SubDraw's subcontractors are always free.
+So when a GC refers another GC, any subs they share automatically join the network.
+This is genuinely useful to mention — it means less friction for the referred GC.
+
+Be genuine. They've been using it for a month — they know if it works.
+Under 75 words. Casual. One ask. Return JSON only.`;
 
 async function findReferralCandidates() {
-  console.log('[Agent 22] Finding 30-day customers for referral ask...');
+  console.log('[Agent 22] Finding 30-day customers...');
   try {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
     const customers = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=customer&limit=100');
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     return (customers.contacts || []).filter(c => {
-      const signupDate = new Date(c.dateAdded);
-      const daysSince = Math.floor((Date.now() - signupDate.getTime()) / 86400000);
-      return daysSince >= 30 && daysSince <= 37 && !c.tags?.includes('referral-asked');
+      const days = Math.floor((Date.now() - new Date(c.dateAdded).getTime()) / 86400000);
+      return days >= 30 && days <= 37 && !c.tags?.includes('referral-asked');
     });
   } catch(e) {
     console.error('[Agent 22] Error:', e.message);
@@ -34,16 +35,17 @@ async function findReferralCandidates() {
 }
 
 async function sendReferralAsk(contact) {
-  const prompt = `Write a referral request for a SubDraw customer who has been using it for 30 days:
+  const plan = contact.tags?.find(t => t.startsWith('plan-'))?.replace('plan-', '') || 'starter';
+  const planLabel = plan === 'starter' ? 'Starter (10 subs)' : plan === 'professional' ? 'Professional (30 subs)' : 'Scale';
+
+  const prompt = `Write a referral ask for a SubDraw customer — 30 days in, on ${planLabel} plan.
 
 Customer: ${contact.firstName} at ${contact.companyName || 'their company'}
-Plan: ${contact.tags?.find(t => t.startsWith('plan-'))?.replace('plan-', '') || 'starter'}
+Plan: ${planLabel}
 Demo URL: ${icp.product.demo_url}
 
-Ask if they know any other GCs who deal with the same draw headaches.
-Offer their referral a free first month.
-Keep it casual and genuine — they're a happy customer, not a sales target.
-Under 75 words.
+Mention: any GC they refer gets their first month free. Their subs who are already on SubDraw can immediately work with the referred GC — no re-onboarding.
+Casual and genuine. Under 75 words.
 
 Return: { "subject": "...", "body": "..." }`;
 
@@ -60,16 +62,17 @@ Return: { "subject": "...", "body": "..." }`;
     await callGHL('PUT', '/contacts/' + contact.id, {
       tags: [...(contact.tags || []), 'referral-asked']
     });
-    logRun('22-referral-trigger', { asked: contact.email, company: contact.companyName });
+    logRun('22-referral-trigger', { asked: contact.email, plan });
   } catch(e) {
     console.error('[Agent 22] Error:', e.message);
   }
+
   return { contact, email };
 }
 
 async function runReferralAgent() {
   const candidates = await findReferralCandidates();
-  console.log('[Agent 22] ' + candidates.length + ' referral candidates today');
+  console.log('[Agent 22] ' + candidates.length + ' referral candidates');
   if (!candidates.length) return [];
   return Promise.all(candidates.map(sendReferralAsk));
 }

@@ -1,52 +1,71 @@
 /**
- * Agent 18: Expansion Agent
- * When a Starter $149 customer has been active 60+ days, triggers upgrade sequence
- * Identifies usage signals that indicate they need Professional $299 or Scale $599
- * Pure revenue without finding new leads
+ * Agent 18: Expansion Agent — REBUILT
+ * Upgrade triggers based on SubDraw's actual plan limits
+ * Starter (10 subs) → Professional (30 subs) when they're near the limit
+ * Professional (30 subs) → Scale (unlimited) when they're running multiple large projects
+ * Pricing model: active subcontracts, not users
  */
 require('dotenv').config({ path: './config/.env' });
 const { callClaude, callGHL, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
-const SYSTEM = `You are an expansion revenue agent for SubDraw SaaS.
-Write upgrade emails for existing customers who have outgrown their current plan.
-Sound helpful, not salesy. You're solving a real problem they're hitting.
-Reference their specific plan limits. Under 100 words. Return JSON only.`;
+const SYSTEM = `You are an expansion revenue agent for SubDraw construction draw management software.
+Write upgrade emails for customers who have outgrown their current plan.
+SubDraw pricing is based on active subcontracts — not users, not seats.
+
+Plan limits:
+- Starter $149/mo: up to 10 active subcontracts
+- Professional $299/mo: up to 30 active subcontracts
+- Scale $599/mo: unlimited active subcontracts
+
+Subcontractors are always free on all plans.
+All features included on every plan — upgrade just unlocks more active subcontracts.
+
+Sound helpful — they're hitting a real limit, not being upsold.
+Under 100 words. Return JSON only.`;
 
 async function findUpgradeCandidates() {
   console.log('[Agent 18] Finding upgrade candidates...');
-
   try {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
-    // Find customers on starter plan for 60+ days
-    const contacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=customer,plan-starter&limit=100');
-    const customers = contacts.contacts || [];
 
-    const candidates = customers.filter(c => {
-      const daysSinceSignup = Math.floor((Date.now() - new Date(c.dateAdded).getTime()) / (1000 * 60 * 60 * 24));
-      return daysSinceSignup >= 60 && !c.tags?.includes('upgrade-email-sent');
-    });
+    // Starter customers nearing 10-sub limit (60+ days, active)
+    const starterContacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=customer,plan-starter&limit=100');
+    const starterCandidates = (starterContacts.contacts || []).filter(c => {
+      const days = Math.floor((Date.now() - new Date(c.dateAdded).getTime()) / 86400000);
+      return days >= 60 && !c.tags?.includes('upgrade-email-sent');
+    }).map(c => ({ ...c, from_plan: 'Starter ($149/mo, 10 subs)', to_plan: 'Professional ($299/mo, 30 subs)', upgrade_reason: 'approaching 10-subcontract limit' }));
 
-    console.log('[Agent 18] Found ' + candidates.length + ' upgrade candidates');
+    // Professional customers nearing 30-sub limit (90+ days, active)
+    const proContacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=customer,plan-professional&limit=100');
+    const proCandidates = (proContacts.contacts || []).filter(c => {
+      const days = Math.floor((Date.now() - new Date(c.dateAdded).getTime()) / 86400000);
+      return days >= 90 && !c.tags?.includes('upgrade-email-sent');
+    }).map(c => ({ ...c, from_plan: 'Professional ($299/mo, 30 subs)', to_plan: 'Scale ($599/mo, unlimited)', upgrade_reason: 'growing project count and subcontractor volume' }));
+
+    const candidates = [...starterCandidates, ...proCandidates];
+    console.log('[Agent 18] ' + candidates.length + ' upgrade candidates');
     return candidates;
   } catch(e) {
-    console.error('[Agent 18] GHL error:', e.message);
+    console.error('[Agent 18] Error:', e.message);
     return [];
   }
 }
 
 async function sendUpgradeEmail(contact) {
-  const currentPlan = contact.tags?.includes('plan-starter') ? 'Starter $149' : 'Professional $299';
-  const upgradeTo = contact.tags?.includes('plan-starter') ? 'Professional $299' : 'Scale $599';
-
-  const prompt = `Write an upgrade email for a SubDraw customer who has been on ${currentPlan} for 60+ days.
+  const prompt = `Write an upgrade email for this SubDraw customer:
 
 Customer: ${contact.firstName} ${contact.lastName} at ${contact.companyName}
-Current plan: ${currentPlan}
-Upgrade to: ${upgradeTo}
+Current plan: ${contact.from_plan}
+Upgrading to: ${contact.to_plan}
+Upgrade reason: ${contact.upgrade_reason}
+Demo URL: ${icp.product.demo_url}
 
-Frame it around what they're likely hitting as limits — more projects, team members, or automation.
-Sound helpful. Under 100 words. Include subdraw.com/login to upgrade.
+Frame it around the subcontract limit they're approaching.
+SubDraw pricing is per active subcontracts — all features are already included.
+The upgrade just unlocks more active subcontracts.
+Sound helpful — they need more capacity, not a sales pitch.
+Under 100 words.
 
 Return: { "subject": "...", "body": "..." }`;
 
@@ -63,7 +82,7 @@ Return: { "subject": "...", "body": "..." }`;
     await callGHL('PUT', '/contacts/' + contact.id, {
       tags: [...(contact.tags || []), 'upgrade-email-sent']
     });
-    logRun('18-expansion-agent', { sent_to: contact.email, from_plan: currentPlan, to_plan: upgradeTo });
+    logRun('18-expansion-agent', { sent_to: contact.email, from: contact.from_plan, to: contact.to_plan });
   } catch(e) {
     console.error('[Agent 18] Error:', e.message);
   }
@@ -78,4 +97,4 @@ async function runExpansionAgent() {
 }
 
 module.exports = { runExpansionAgent };
-if (require.main === module) runExpansionAgent().then(r => console.log('[Agent 18] Done:', r.length, 'upgrade emails sent'));
+if (require.main === module) runExpansionAgent().then(r => console.log('[Agent 18] Done:', r.length));

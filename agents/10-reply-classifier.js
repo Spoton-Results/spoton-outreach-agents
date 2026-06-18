@@ -1,91 +1,124 @@
 /**
- * Agent 10: Reply Classifier
- * Reads Instantly replies and routes them to the right action
- * Runs every 30 minutes on Railway cron
+ * Agent 10: Reply Classifier — REBUILT
+ * Classifies replies with SubDraw-specific context
+ * Knows the difference between "price objection" and "feature question"
+ * Routes each to the right response agent
  */
 require('dotenv').config({ path: './config/.env' });
 const { callClaude, callInstantly, callGHL, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
 const SYSTEM = `You are a reply classification agent for SubDraw sales outreach to General Contractors.
-Classify each email reply and determine the next action. Return JSON only.
+SubDraw is a construction draw management and invoice protection platform.
+Classify each reply and route it to the correct response. Return JSON only.
 
-Categories:
-- "interested": wants to learn more, asks questions, agrees to call
-- "not_now": too busy, wrong timing, follow up later
-- "wrong_person": not decision maker, refer to someone else
-- "unsubscribe": remove me, not interested, stop emailing
-- "question": specific question about SubDraw features or pricing
-- "objection": has specific objection (price, already has tool, no time)
-- "auto_reply": out of office, automated response`;
+CATEGORIES:
+- "interested": wants to learn more, asks to see it, positive engagement
+- "not_now": too busy right now, wrong timing, try me in X months
+- "wrong_person": not the decision maker, tells you who is
+- "unsubscribe": stop emailing, remove me, not interested at all
+- "question_pricing": asking about cost, plans, what's included
+- "question_feature": asking about specific features (retainage, lien waivers, pay apps, etc)
+- "question_integration": asking about QuickBooks, accounting software, Procore
+- "objection_price": too expensive, can't justify cost
+- "objection_competitor": happy with Procore / Buildertrend / spreadsheets
+- "objection_timing": not the right time, busy season, wait until next project
+- "objection_size": too small, only have 1-2 subs
+- "auto_reply": out of office, automated response
+
+SubDraw-specific context for classification:
+- Pricing by active subcontracts (not users) — $149/$299/$599
+- Subcontractors are always free
+- 7-day free trial at subdraw.com/login
+- Replaces spreadsheets and email chains for sub billing`;
 
 async function classifyReplies() {
   console.log('[Agent 10] Checking Instantly for new replies...');
 
-  // Fetch unread replies from Instantly
-  const repliesData = await callInstantly('GET', '/email/list?campaign_id=' + (process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly.campaign_id) + '&limit=50');
-  const replies = repliesData.emails || [];
+  try {
+    const campaignId = process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly.campaign_id;
+    const repliesData = await callInstantly('GET', '/email/list?campaign_id=' + campaignId + '&limit=50&reply=true');
+    const replies = repliesData.emails || [];
 
-  if (replies.length === 0) {
-    console.log('[Agent 10] No new replies');
-    return [];
-  }
+    if (!replies.length) {
+      console.log('[Agent 10] No new replies');
+      return [];
+    }
 
-  console.log('[Agent 10] Classifying ' + replies.length + ' replies...');
-  const classified = [];
+    console.log('[Agent 10] Classifying ' + replies.length + ' replies...');
+    const classified = [];
 
-  for (const reply of replies) {
-    const prompt = `Classify this reply to a SubDraw cold email targeting a General Contractor:
+    for (const reply of replies) {
+      const prompt = `Classify this reply to a SubDraw cold email:
 
 From: ${reply.from_address}
 Subject: ${reply.subject}
-Body: ${reply.body?.substring(0, 500)}
+Body: ${reply.body?.substring(0, 600)}
 
 Return: {
-  "category": "interested|not_now|wrong_person|unsubscribe|question|objection|auto_reply",
+  "category": "interested|not_now|wrong_person|unsubscribe|question_pricing|question_feature|question_integration|objection_price|objection_competitor|objection_timing|objection_size|auto_reply",
   "sentiment": "positive|neutral|negative",
   "urgency": "high|medium|low",
-  "next_action": "book_demo|follow_up_in_X_days|find_decision_maker|unsubscribe|answer_question|handle_objection|ignore",
+  "next_action": "send_demo_link|handle_objection|answer_question|follow_up_in_X_days|find_right_contact|unsubscribe|ignore",
   "follow_up_days": null or number,
-  "key_info": "any extracted info — right contact name, objection details, question asked",
-  "ghl_stage": "replied"
+  "key_info": "extracted details — competitor named, question asked, right contact name, specific objection",
+  "subdraw_relevance": "what aspect of SubDraw is most relevant to their reply"
 }`;
 
-    const classification = JSON.parse(await callClaude(SYSTEM, prompt));
+      const classification = JSON.parse(await callClaude(SYSTEM, prompt));
 
-    // Update GHL stage to Replied for interested/question/objection
-    if (['interested','question','objection'].includes(classification.category)) {
-      try {
-        const contacts = await callGHL('GET', '/contacts/?email=' + encodeURIComponent(reply.from_address) + '&locationId=' + (process.env.GHL_LOCATION_ID || icp.ghl.location_id));
-        const contactId = contacts.contacts?.[0]?.id;
-        if (contactId) {
-          // Find their opportunity and update stage
-          const opps = await callGHL('GET', '/opportunities/search?contact_id=' + contactId + '&pipeline_id=' + (process.env.GHL_PIPELINE_ID || icp.ghl.pipeline_id));
-          const oppId = opps.opportunities?.[0]?.id;
-          if (oppId) {
-            await callGHL('PUT', '/opportunities/' + oppId, {
-              pipelineStageId: process.env.GHL_STAGE_REPLIED || icp.ghl.stages.replied
+      // Update GHL pipeline stage for engaged replies
+      const engagedCategories = ['interested','question_pricing','question_feature','question_integration','objection_price','objection_competitor','objection_timing'];
+      if (engagedCategories.includes(classification.category)) {
+        try {
+          const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
+          const contacts = await callGHL('GET', '/contacts/?email=' + encodeURIComponent(reply.from_address) + '&locationId=' + locationId);
+          const contactId = contacts.contacts?.[0]?.id;
+          if (contactId) {
+            const opps = await callGHL('GET', '/opportunities/search?contact_id=' + contactId + '&pipeline_id=' + (process.env.GHL_PIPELINE_ID || icp.ghl.pipeline_id));
+            const oppId = opps.opportunities?.[0]?.id;
+            if (oppId) {
+              await callGHL('PUT', '/opportunities/' + oppId, {
+                pipelineStageId: process.env.GHL_STAGE_REPLIED || icp.ghl.stages.replied
+              });
+            }
+            // Tag with reply type
+            await callGHL('PUT', '/contacts/' + contactId, {
+              tags: ['replied', 'reply-' + classification.category]
             });
           }
+        } catch(e) {
+          console.error('[Agent 10] GHL update error:', e.message);
         }
-      } catch (e) {
-        console.error('[Agent 10] GHL update error: ' + e.message);
       }
+
+      // Handle unsubscribes in Instantly
+      if (classification.category === 'unsubscribe') {
+        try {
+          await callInstantly('POST', '/lead/update', {
+            campaign_id: campaignId,
+            email: reply.from_address,
+            skip: true
+          });
+        } catch(e) { console.error('[Agent 10] Unsubscribe error:', e.message); }
+      }
+
+      classified.push({ ...reply, classification });
     }
 
-    classified.push({ ...reply, classification });
+    const summary = classified.reduce((acc, r) => {
+      acc[r.classification.category] = (acc[r.classification.category] || 0) + 1;
+      return acc;
+    }, {});
+
+    logRun('10-reply-classifier', { total: replies.length, breakdown: summary });
+    console.log('[Agent 10] Classified:', summary);
+    return classified;
+  } catch(e) {
+    console.error('[Agent 10] Error:', e.message);
+    return [];
   }
-
-  logRun('10-reply-classifier', {
-    total: replies.length,
-    interested: classified.filter(r => r.classification.category === 'interested').length,
-    questions: classified.filter(r => r.classification.category === 'question').length,
-    objections: classified.filter(r => r.classification.category === 'objection').length,
-    unsubscribes: classified.filter(r => r.classification.category === 'unsubscribe').length
-  });
-
-  return classified;
 }
 
 module.exports = { classifyReplies };
-if (require.main === module) classifyReplies().then(r => console.log('Done:', r.length, 'replies processed'));
+if (require.main === module) classifyReplies().then(r => console.log('[Agent 10] Done:', r.length, 'replies'));
