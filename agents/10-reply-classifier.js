@@ -92,6 +92,16 @@ Return: {
         }
       }
 
+      // Schedule follow-up for not_now replies — Agent 32
+      if (classification.category === 'not_now') {
+        try {
+          const { scheduleFollowUp } = require('./32-followup-scheduler');
+          await scheduleFollowUp({ ...reply, classification });
+        } catch(e) {
+          console.error('[Agent 10] Follow-up scheduler error:', e.message);
+        }
+      }
+
       // Handle unsubscribes in Instantly
       if (classification.category === 'unsubscribe') {
         try {

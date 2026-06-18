@@ -45,6 +45,32 @@ async function findColdLeads() {
   }
 }
 
+// NEW: Find not-now leads whose follow-up date is today or past
+async function findScheduledFollowUps() {
+  console.log('[Agent 12] Checking for scheduled follow-ups due today...');
+  try {
+    const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Find contacts tagged scheduled-followup
+    const contacts = await callGHL('GET',
+      '/contacts/?locationId=' + locationId + '&query=scheduled-followup&limit=50'
+    );
+
+    const due = (contacts.contacts || []).filter(c => {
+      const followUpDate = c.customFields?.find(f => f.key === 'follow_up_date')?.field_value;
+      const alreadyFollowedUp = c.tags?.includes('followup-sent');
+      return followUpDate && followUpDate <= today && !alreadyFollowedUp;
+    });
+
+    console.log('[Agent 12] Found ' + due.length + ' scheduled follow-ups due today');
+    return due;
+  } catch(e) {
+    console.error('[Agent 12] Scheduled follow-up check error:', e.message);
+    return [];
+  }
+}
+
 async function writeReengagement(opp) {
   const month = new Date().toLocaleString('default', { month: 'long' });
   const quarter = Math.ceil((new Date().getMonth() + 1) / 3);
@@ -84,10 +110,71 @@ Return: { "subject": "...", "body": "..." }`;
   return { opp, email };
 }
 
+async function writeScheduledFollowUp(contact) {
+  const followUpNote = contact.customFields?.find(f => f.key === 'follow_up_note')?.field_value || '';
+  const notNowReason = contact.customFields?.find(f => f.key === 'not_now_reason')?.field_value || '';
+  const month = new Date().toLocaleString('default', { month: 'long' });
+
+  const prompt = `Write a follow-up email for a GC who previously said "not now" to SubDraw.
+
+Contact: ${contact.firstName} ${contact.lastName} at ${contact.companyName}
+What they said before: ${notNowReason || 'not the right time'}
+Follow-up context: ${followUpNote}
+Current month: ${month}
+Demo URL: ${icp.product.demo_url}
+
+This is a scheduled follow-up — they said try back later and this is later.
+Do NOT say "following up" or "circling back".
+Use a fresh angle. Reference the timing they gave if possible.
+Under 75 words.
+
+Return: { "subject": "...", "body": "..." }`;
+
+  const email = JSON.parse(await callClaude(SYSTEM, prompt));
+
+  try {
+    await callGHL('POST', '/conversations/messages', {
+      type: 'Email',
+      contactId: contact.id,
+      subject: email.subject,
+      body: email.body,
+      html: '<p>' + email.body.replace(/\n/g, '<br>') + '</p>'
+    });
+    await callGHL('PUT', '/contacts/' + contact.id, {
+      tags: [...(contact.tags || []), 'followup-sent', 'reengaged']
+    });
+    logRun('12-reengagement-tracker', { type: 'scheduled', contact: contact.email });
+  } catch(e) {
+    console.error('[Agent 12] Scheduled follow-up send error:', e.message);
+  }
+
+  return { contact, email };
+}
+
 async function findAndReengageColdLeads() {
-  const cold = await findColdLeads();
-  if (!cold.length) return [];
-  return Promise.all(cold.map(writeReengagement));
+  // Run both: 45-day cold leads AND scheduled follow-ups due today
+  const [cold, scheduledDue] = await Promise.all([
+    findColdLeads(),
+    findScheduledFollowUps()
+  ]);
+
+  const results = [];
+
+  // Process 45-day cold leads
+  if (cold.length) {
+    const coldResults = await Promise.all(cold.map(writeReengagement));
+    results.push(...coldResults);
+  }
+
+  // Process scheduled follow-ups (not-now leads whose date is today)
+  if (scheduledDue.length) {
+    console.log('[Agent 12] Processing ' + scheduledDue.length + ' scheduled follow-ups...');
+    const scheduledResults = await Promise.all(scheduledDue.map(writeScheduledFollowUp));
+    results.push(...scheduledResults);
+  }
+
+  console.log('[Agent 12] Total reengaged today:', results.length);
+  return results;
 }
 
 module.exports = { findAndReengageColdLeads };
