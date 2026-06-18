@@ -35,7 +35,8 @@ async function launchCampaigns(prospects) {
     }
   }
 
-  logRun('08-campaign-launcher', { launched: launched.length, failed: failed.length });
+  require('../utils/helpers').notifyDashboard('email_sent', { campaign: campaignId, count: launched.length });
+    logRun('08-campaign-launcher', { launched: launched.length, failed: failed.length });
   return { launched, failed };
 }
 

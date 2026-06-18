@@ -121,6 +121,7 @@ Return: {
       return acc;
     }, {});
 
+    require('../utils/helpers').notifyDashboard('reply', { contact: reply.from_address, category: classification.category });
     logRun('10-reply-classifier', { total: replies.length, breakdown: summary });
     console.log('[Agent 10] Classified:', summary);
     return classified;

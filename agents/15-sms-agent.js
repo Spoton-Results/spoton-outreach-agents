@@ -58,7 +58,8 @@ Return: { "message": "..." }`;
         contactId: contact.id,
         message: sms.message
       });
-      logRun('15-sms-agent', { sent_to: lead.email, opens: lead.open_count, message: sms.message });
+      require('../utils/helpers').notifyDashboard('sms', { contact: contact.companyName || contact.email, body: smsText.substring(0,80) });
+    logRun('15-sms-agent', { sent_to: lead.email, opens: lead.open_count, message: sms.message });
       return { ...lead, sms_sent: true, message: sms.message };
     } else {
       console.log('[Agent 15] No phone for ' + lead.email + ' — skipping SMS');

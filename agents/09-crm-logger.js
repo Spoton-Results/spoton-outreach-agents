@@ -61,7 +61,8 @@ async function logToGHL(prospects) {
     }
   }
 
-  logRun('09-crm-logger', { logged: logged.length });
+  require('../utils/helpers').notifyDashboard('new_lead', { company: p.organization_name, city: p.city, state: p.state, source: p.source });
+    logRun('09-crm-logger', { logged: logged.length });
   return logged;
 }
 

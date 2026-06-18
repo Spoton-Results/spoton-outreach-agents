@@ -62,3 +62,22 @@ function logRun(agentName, data) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 module.exports = { callClaude, callGHL, callInstantly, logRun, sleep };
+
+// ── Dashboard webhook notifier ──────────────────────────────────────────────
+// Every agent action posts to the dashboard for real-time activity feed
+async function notifyDashboard(type, data) {
+  const url = process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app';
+  try {
+    const fetch = (await import('node-fetch')).default;
+    await fetch(url + '/webhook/ghl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, source: 'agent', ...data }),
+      timeout: 3000
+    });
+  } catch(e) {
+    // Non-blocking — never fail because dashboard is down
+  }
+}
+
+module.exports.notifyDashboard = notifyDashboard;

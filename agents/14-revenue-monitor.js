@@ -85,7 +85,8 @@ What needs immediate attention? Any patterns?
 Return: { "alerts": [...], "revenue_added": $X, "churn_risk": "high|medium|low|none", "action_needed": "..." }`;
 
       const analysis = JSON.parse(await callClaude(SYSTEM, prompt));
-      logRun('14-revenue-monitor', { ...summary, analysis });
+      require('../utils/helpers').notifyDashboard('revenue', { mrr: data.mrr, signups: data.new_signups, cancels: data.cancellations });
+    logRun('14-revenue-monitor', { ...summary, analysis });
 
       if (analysis.alerts?.length > 0) {
         console.log('[Agent 14] ALERTS:', analysis.alerts);
