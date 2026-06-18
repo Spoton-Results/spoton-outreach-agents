@@ -1,0 +1,7 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "node scripts/health-monitor-cron.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
