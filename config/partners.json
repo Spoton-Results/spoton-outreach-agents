@@ -1,0 +1,34 @@
+{
+  "partner_icp": {
+    "types": [
+      {
+        "type": "construction_lender",
+        "titles": ["loan officer", "construction loan officer", "VP of lending", "portfolio manager", "relationship manager"],
+        "companies": ["regional bank", "credit union", "community bank", "construction lender", "private lender"],
+        "pitch": "Your GC clients are still submitting draw requests by email and spreadsheet. SubDraw gives them a professional draw portal AND gives you a live dashboard to track every draw across your portfolio.",
+        "pain_point": "chasing GCs for draw documentation and compliance paperwork"
+      },
+      {
+        "type": "title_company",
+        "titles": ["owner", "escrow officer", "title officer", "branch manager", "operations manager"],
+        "pitch": "When draws are disorganized, closings get delayed. SubDraw puts all draw docs in one place — your GC clients show up prepared.",
+        "pain_point": "incomplete or missing draw documentation at closing"
+      },
+      {
+        "type": "construction_cpa",
+        "titles": ["CPA", "accountant", "controller", "CFO", "partner", "managing partner"],
+        "companies": ["accounting firm", "CPA firm", "construction accounting"],
+        "pitch": "Your GC clients are doing draw reconciliation manually in spreadsheets. SubDraw automates the paper trail — cleaner books for you, less headache for them.",
+        "pain_point": "reconciling draw payments with job costs manually"
+      },
+      {
+        "type": "surety_bond_agent",
+        "titles": ["surety agent", "bond agent", "insurance agent", "broker"],
+        "pitch": "Bonded GCs with organized draw documentation get better rates and faster approvals. SubDraw is the paper trail that proves they run a tight operation.",
+        "pain_point": "GC clients lacking documentation for bond renewals"
+      }
+    ],
+    "referral_offer": "Your clients get their first month free. You get credited as the referral source.",
+    "partner_demo_url": "https://subdraw.com/login"
+  }
+}

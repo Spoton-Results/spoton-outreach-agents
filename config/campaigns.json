@@ -1,0 +1,39 @@
+{
+  "campaigns": {
+    "california": {
+      "instantly_campaign_id": "bb1d4655-8d06-4218-89d4-ec196bc8ca81",
+      "state": "California",
+      "launch_date": "2026-07-07",
+      "status": "warming_up",
+      "notes": "8 CA GC leads loaded, auto-launches July 7th"
+    },
+    "texas": {
+      "instantly_campaign_id": "TEXAS_CAMPAIGN_ID_HERE",
+      "state": "Texas",
+      "launch_date": "2026-08-01",
+      "status": "not_created",
+      "notes": "Create in Instantly: SubDraw Texas GCs — copy CA sequence, adjust angles for Texas construction market"
+    },
+    "florida": {
+      "instantly_campaign_id": "FLORIDA_CAMPAIGN_ID_HERE",
+      "state": "Florida",
+      "launch_date": "2026-08-15",
+      "status": "not_created",
+      "notes": "Create in Instantly: SubDraw Florida GCs — residential construction heavy market"
+    },
+    "arizona": {
+      "instantly_campaign_id": "ARIZONA_CAMPAIGN_ID_HERE",
+      "state": "Arizona",
+      "launch_date": "2026-09-01",
+      "status": "not_created",
+      "notes": "Create in Instantly: SubDraw Arizona GCs — Phoenix/Tucson commercial growth"
+    },
+    "partners": {
+      "instantly_campaign_id": "PARTNERS_CAMPAIGN_ID_HERE",
+      "target": "construction_lenders_title_cpas",
+      "launch_date": "2026-07-15",
+      "status": "not_created",
+      "notes": "Create in Instantly: SubDraw Partner Network — separate sequence for lenders/title/CPAs"
+    }
+  }
+}
