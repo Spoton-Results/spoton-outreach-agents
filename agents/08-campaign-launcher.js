@@ -6,7 +6,8 @@ require('dotenv').config({ path: './config/.env' });
 const { callInstantly, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
-async function launchCampaigns(prospects) {
+async function launchCampaigns(prospects, options = {}) {
+  const campaignId = options.campaignId || campaignId;
   console.log('[Agent 08] Launching ' + prospects.length + ' prospects into Instantly...');
   const launched = [], failed = [];
 
