@@ -6,6 +6,8 @@ require('dotenv').config({ path: './config/.env' });
 const { findProspects }         = require('../agents/01-prospect-finder');
 const { screenProspects }       = require('../agents/02-pre-screener');
 const { gatherIntelBatch }      = require('../agents/03-competitive-intel');
+const { enrichBatch }           = require('../agents/33-lead-enrichment');
+const { scoreBatch }            = require('../agents/34-icp-scorer');
 const { scoutBatch }            = require('../agents/04-personalization-scout');
 const { writeSequenceBatch }    = require('../agents/05-email-copywriter');
 const { reviewBatch }           = require('../agents/06-quality-reviewer');
@@ -36,7 +38,9 @@ async function main() {
 
     const screened  = await screenProspects(raw);
     const withIntel = await gatherIntelBatch(screened);
-    const withHooks = await scoutBatch(withIntel);
+    const withEnrichment = await enrichBatch(withIntel);
+    const withICPScore = await scoreBatch(withEnrichment);
+    const withHooks = await scoutBatch(withICPScore);
     const withEmails = await writeSequenceBatch(withHooks);
     const { approved, rejected } = await reviewBatch(withEmails);
     const verified  = await verifyContacts(approved);

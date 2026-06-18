@@ -8,6 +8,7 @@ const { scoreAllLeads }    = require('../agents/17-lead-scorer');
 const { runHealthCheck }   = require('../agents/25-health-monitor');
 const { findAndReengageColdLeads } = require('../agents/12-reengagement-tracker');
 const { detectCrossSellOpportunities } = require('../agents/31-crosssell-detector');
+const { runDormantRecovery } = require('../agents/35-dormant-pipeline-recovery');
 
 async function main() {
   console.log('\n🌅 SubDraw Daily Briefing — ' + new Date().toISOString());
@@ -15,6 +16,7 @@ async function main() {
     await runHealthCheck();
     await scoreAllLeads();
     await findAndReengageColdLeads();
+    await runDormantRecovery();
     await detectCrossSellOpportunities();
     await generateBriefing();
     console.log('\n✅ Daily briefing complete');

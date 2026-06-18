@@ -7,12 +7,16 @@ const { analyzePerformance }       = require('../agents/20-ab-performance-analyz
 const { analyzePricing }           = require('../agents/30-pricing-signal-monitor');
 const { findPartners }             = require('../agents/27-partner-prospector');
 const { runPartnerOutreach }       = require('../agents/23-partner-outreach');
+const { analyzeLostDeals }         = require('../agents/36-lost-deal-analyzer');
+const { scanMarketTrends }         = require('../agents/37-market-trend-scanner');
 
 async function main() {
   console.log('\n📊 SubDraw Weekly Analyzer — ' + new Date().toISOString());
   try {
     await analyzePerformance();
     await analyzePricing();
+    await analyzeLostDeals();
+    await scanMarketTrends();
 
     // Find and reach out to new partner prospects
     const lenders  = await findPartners('construction_lender', process.env.TARGET_STATE || 'California', 10);
