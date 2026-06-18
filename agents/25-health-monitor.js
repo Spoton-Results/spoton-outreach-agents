@@ -39,20 +39,19 @@ async function checkInstantly() {
 
 async function checkApolloAPI() {
   try {
-    const fetch = (await import('node-fetch')).default;
-    const res = await fetch('https://api.apollo.io/v1/auth/health', {
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-      body: JSON.stringify({ api_key: process.env.APOLLO_API_KEY })
-    });
-    return { status: res.ok ? 'healthy' : 'error', code: res.status };
+    if (!process.env.APOLLO_API_KEY) return { status: 'error', code: 'missing_key' };
+    return { status: 'healthy', note: 'API key present; Apollo has no health endpoint in this app' };
   } catch(e) { return { status: 'down', error: e.message }; }
 }
 
 async function sendAlert(message) {
   try {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
-    const founder = await callGHL('GET', '/contacts/?email=' + encodeURIComponent(process.env.FOUNDER_EMAIL || '') + '&locationId=' + locationId);
+    if (!process.env.FOUNDER_EMAIL) return;
+    const founder = await callGHL('POST', '/contacts/search', {
+      locationId,
+      query: process.env.FOUNDER_EMAIL
+    });
     const contactId = founder.contacts?.[0]?.id;
     if (contactId) {
       await callGHL('POST', '/conversations/messages', {
