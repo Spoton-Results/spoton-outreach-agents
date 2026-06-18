@@ -1,158 +1,328 @@
 /**
- * Agent 01: Prospect Finder
- * 3-layer prospect discovery — scraping + Apollo + Vibe
+ * Agent 01: Prospect Finder — The Orchestrator
  * 
- * Layer 1: Web scraping (Yelp + Google Maps + CSLB) — free, unlimited
- * Layer 2: Apollo.io — 210M contacts, paid but comprehensive  
- * Layer 3: Vibe Prospecting — burns remaining credits
+ * This is the brain. It decides WHERE to find GCs, pulls from ALL sources
+ * simultaneously, deduplicates, and hands a clean batch to the pipeline.
  * 
- * All three run in parallel and deduplicate by company name.
- * Scraping gives us companies. Apollo/Vibe give us named contacts.
- * Claude then cross-enriches: finds owner names for scraped companies.
+ * Sources it orchestrates:
+ *   1. Apollo.io       — B2B database, title/industry filters
+ *   2. Vibe            — Enriched contacts with emails/phones
+ *   3. Firecrawl       — Any URL: directories, license boards, association pages
+ *   4. Google CSE      — Searches 12 city+keyword combos automatically
+ *   5. GHL dedup check — Never returns someone already in the pipeline
+ * 
+ * It decides:
+ *   - Which state to target this run (rotates CA→UT→TX→FL→AZ)
+ *   - Which cities in that state to hit
+ *   - Which sources to use (skips sources with no key or exhausted credits)
+ *   - How many prospects to pull per source
+ *   - How to merge and deduplicate across sources
+ * 
+ * The continuous prospector just calls this. One function. Done.
  */
 require('dotenv').config({ path: './config/.env' });
-const { logRun, callClaude } = require('../utils/helpers');
-const icp = require('../config/icp.json');
-const apollo = require('../utils/apollo-client');
-const vibe = require('../utils/vibe-client');
-const { scrapeProspects, extractContactFromWebsite } = require('../utils/scraper-client');
+const { callClaude, callGHL, logRun, notifyDashboard } = require('../utils/helpers');
 
-const GC_TITLES = [
-  'owner', 'president', 'principal', 'founder', 'co-founder',
-  'general contractor', 'project executive', 'vp construction',
-  'director of construction', 'construction manager', 'project manager'
+// Source clients
+const apollo    = require('../utils/apollo-client');
+const vibe      = require('../utils/vibe-client');
+
+// State rotation
+const STATE_ROTATION = [
+  { state: 'California', code: 'CA', campaign: process.env.INSTANTLY_CA_CAMPAIGN_ID || process.env.INSTANTLY_CAMPAIGN_ID },
+  { state: 'Utah',       code: 'UT', campaign: process.env.INSTANTLY_UT_CAMPAIGN_ID },
+  { state: 'Texas',      code: 'TX', campaign: process.env.INSTANTLY_TX_CAMPAIGN_ID },
+  { state: 'Florida',    code: 'FL', campaign: process.env.INSTANTLY_FL_CAMPAIGN_ID },
+  { state: 'Arizona',    code: 'AZ', campaign: process.env.INSTANTLY_AZ_CAMPAIGN_ID },
 ];
 
-const GC_KEYWORDS = [
-  'general contractor', 'general contracting', 'construction management',
-  'commercial construction', 'residential construction', 'building contractor'
-];
+const CITIES = {
+  California: ['Los Angeles','San Diego','San Jose','San Francisco','Sacramento','Fresno','Long Beach','Oakland','Bakersfield','Anaheim','Riverside','Stockton','Irvine','Modesto'],
+  Utah:       ['Salt Lake City','St. George','Provo','Ogden','Orem','Sandy','West Jordan','West Valley City','Lehi','Murray'],
+  Texas:      ['Houston','Dallas','Austin','San Antonio','Fort Worth','El Paso','Arlington','Corpus Christi','Plano','Lubbock'],
+  Florida:    ['Miami','Orlando','Tampa','Jacksonville','Fort Lauderdale','Tallahassee','St. Petersburg','Hialeah','Port St. Lucie','Cape Coral'],
+  Arizona:    ['Phoenix','Tucson','Mesa','Chandler','Scottsdale','Glendale','Gilbert','Tempe','Peoria','Surprise'],
+};
 
-async function findProspects(options = {}) {
-  const { limit = 50, state = 'California' } = options;
-  console.log('\n[Agent 01] Finding GC prospects in ' + state + ' (limit: ' + limit + ')');
-  console.log('[Agent 01] Running 3 sources in parallel...');
+// Directories to scrape per state — Firecrawl handles all blocking
+const SCRAPE_URLS = {
+  California: [
+    'https://www.buildzoom.com/contractors/california',
+    'https://www.angieslist.com/companylist/general-contractor/california.htm',
+    'https://www2.cslb.ca.gov/OnlineServices/CheckLicenseII/LicenseSearch.aspx',
+  ],
+  Utah: [
+    'https://www.buildzoom.com/contractors/utah',
+    'https://www.angieslist.com/companylist/general-contractor/utah.htm',
+  ],
+  Texas: [
+    'https://www.buildzoom.com/contractors/texas',
+    'https://www.angieslist.com/companylist/general-contractor/texas.htm',
+  ],
+  Florida: [
+    'https://www.buildzoom.com/contractors/florida',
+  ],
+  Arizona: [
+    'https://www.buildzoom.com/contractors/arizona',
+  ],
+};
 
-  const results = { scrape: [], apollo: [], vibe: [] };
+let stateIndex = 0;
 
-  // Run all 3 sources simultaneously
-  await Promise.all([
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-    // Layer 1: Web scraping — always runs, no API key required
-    scrapeProspects({ state, limit: Math.ceil(limit * 1.5) })
-      .then(r => { results.scrape = r; console.log('[Agent 01] Scraper: ' + r.length + ' companies'); })
-      .catch(e => console.log('[Agent 01] Scraper error:', e.message)),
-
-    // Layer 2: Apollo — primary paid source
-    process.env.APOLLO_API_KEY
-      ? apollo.searchPeople({ titles: GC_TITLES, keywords: GC_KEYWORDS, state, limit })
-          .then(r => { results.apollo = r; console.log('[Agent 01] Apollo: ' + r.length + ' contacts'); })
-          .catch(e => console.log('[Agent 01] Apollo error:', e.message))
-      : Promise.resolve(),
-
-    // Layer 3: Vibe — secondary paid source
-    process.env.VIBE_API_KEY
-      ? vibe.searchProspects({ state, industries: ['construction', 'general contracting'], limit })
-          .then(r => { results.vibe = r; console.log('[Agent 01] Vibe: ' + r.length + ' contacts'); })
-          .catch(e => console.log('[Agent 01] Vibe error:', e.message))
-      : Promise.resolve()
-
-  ]);
-
-  // Deduplicate across all sources by company name
-  const seen = new Set();
-  const combined = [];
-
-  // Apollo and Vibe contacts first (they have named contacts already)
-  for (const p of [...results.apollo, ...results.vibe]) {
-    const key = (p.organization_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (key.length > 2 && !seen.has(key)) {
-      seen.add(key);
-      combined.push(p);
-    }
+/**
+ * Pull prospects from Apollo
+ */
+async function fromApollo(state, limit = 15) {
+  try {
+    const results = await apollo.searchProspects({ state, limit });
+    console.log('[Agent 01] Apollo: ' + results.length + ' prospects');
+    return results.map(p => ({ ...p, _source: 'apollo' }));
+  } catch(e) {
+    console.log('[Agent 01] Apollo failed:', e.message);
+    return [];
   }
+}
 
-  // Scraped companies — add if not already found via Apollo/Vibe
-  const scrapedNew = [];
-  for (const p of results.scrape) {
-    const key = (p.organization_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (key.length > 2 && !seen.has(key)) {
-      seen.add(key);
-      scrapedNew.push(p);
-    }
+/**
+ * Pull prospects from Vibe
+ */
+async function fromVibe(state, limit = 15) {
+  try {
+    const results = await vibe.searchProspects({ state, limit });
+    console.log('[Agent 01] Vibe: ' + results.length + ' prospects');
+    return results.map(p => ({ ...p, _source: 'vibe' }));
+  } catch(e) {
+    console.log('[Agent 01] Vibe failed:', e.message);
+    return [];
   }
+}
 
-  console.log('[Agent 01] ' + combined.length + ' from APIs, ' + scrapedNew.length + ' new from scraping');
+/**
+ * Scrape a directory URL using Firecrawl + Claude extraction
+ */
+async function fromFirecrawl(url, state) {
+  const apiKey = process.env.FIRECRAWL_API_KEY;
+  if (!apiKey) return [];
 
-  // For scraped companies missing contact info, try to extract from their website
-  // Only do this for the top 20 scraped companies (rate limit Claude calls)
-  if (scrapedNew.length > 0) {
-    console.log('[Agent 01] Enriching scraped contacts from websites...');
-    const toEnrich = scrapedNew
-      .filter(p => p.website && (!p.email || !p.first_name))
-      .slice(0, 20);
+  try {
+    const fetch = (await import('node-fetch')).default;
 
-    const enriched = await Promise.all(
-      toEnrich.map(p => extractContactFromWebsite(p, callClaude).catch(() => p))
+    console.log('[Agent 01] Firecrawl scraping:', url);
+
+    // Scrape the page
+    const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: false, waitFor: 2000 }),
+      timeout: 45000
+    });
+
+    const data = await r.json();
+    if (!data.success || !data.data?.markdown) {
+      console.log('[Agent 01] Firecrawl no content from:', url);
+      return [];
+    }
+
+    const markdown = data.data.markdown.substring(0, 20000);
+
+    // Claude extracts GC contacts from the markdown
+    const prompt = `You are extracting General Contractor leads for SubDraw — a subcontractor invoice management SaaS.
+
+Target: GCs who manage multiple subcontractors. They need SubDraw to catch invoice overruns.
+Skip: Specialty trades (electricians, plumbers, roofers, HVAC, painters, landscapers) unless they do general contracting too.
+
+Source URL: ${url}
+State: ${state}
+
+Page content:
+${markdown}
+
+Extract every GC company. Return a JSON array:
+[{
+  "organization_name": "company name",
+  "first_name": "", "last_name": "", "name": "owner name if found",
+  "email": "email or null", "phone": "phone or null",
+  "website": "website or null", "city": "city or null", "state": "${state.substring(0,2).toUpperCase()}",
+  "license_number": "license # or null", "rating": "stars or null", "reviews": "count or null"
+}]
+
+Return [] if no GCs found. JSON only, no markdown.`;
+
+    const raw = await callClaude(
+      'Extract General Contractor contacts from web pages. Return JSON arrays only.',
+      prompt
     );
 
-    // Replace the original scraped entries with enriched versions
-    const enrichedMap = new Map(enriched.map(p => [p.organization_name, p]));
-    for (let i = 0; i < scrapedNew.length; i++) {
-      if (enrichedMap.has(scrapedNew[i].organization_name)) {
-        scrapedNew[i] = enrichedMap.get(scrapedNew[i].organization_name);
+    const contacts = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    if (!Array.isArray(contacts)) return [];
+
+    console.log('[Agent 01] Firecrawl extracted ' + contacts.length + ' from ' + url.split('/')[2]);
+    return contacts.map(c => ({ ...c, _source: 'firecrawl', source_url: url }));
+
+  } catch(e) {
+    console.log('[Agent 01] Firecrawl error for ' + url + ':', e.message);
+    return [];
+  }
+}
+
+/**
+ * Google Custom Search — 100 free queries/day
+ */
+async function fromGoogle(state, cities) {
+  const apiKey = process.env.GOOGLE_CSE_API_KEY;
+  const cx     = process.env.GOOGLE_CSE_CX;
+  if (!apiKey || !cx) return [];
+
+  const results = [];
+  const queries = cities.slice(0, 5).map(city => `general contractor ${city} ${state}`);
+
+  for (const query of queries) {
+    try {
+      const fetch = (await import('node-fetch')).default;
+      const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=10`;
+      const r = await fetch(url);
+      const data = await r.json();
+
+      for (const item of (data.items || [])) {
+        const skip = ['yelp','houzz','homeadvisor','angieslist','wikipedia','youtube','facebook','linkedin'];
+        if (skip.some(s => item.link.includes(s))) continue;
+
+        const name = item.title.replace(/\s*[-|:]\s*.*$/, '').trim();
+        if (name.length < 3) continue;
+
+        results.push({
+          organization_name: name,
+          website: item.link,
+          city: query.split(' ')[2] || '',
+          state: state.substring(0,2).toUpperCase(),
+          _source: 'google_cse'
+        });
       }
+      await sleep(200);
+    } catch(e) {
+      console.log('[Agent 01] Google CSE error:', e.message);
     }
   }
 
-  // Merge: API contacts + scraped companies
-  const all = [...combined, ...scrapedNew];
+  console.log('[Agent 01] Google CSE: ' + results.length + ' prospects');
+  return results;
+}
 
-  // Final filter: must have company name and at least one contact signal
-  const valid = all.filter(p =>
-    p.organization_name &&
-    p.organization_name.length > 2 &&
-    (p.email || p.phone || p.website || p.linkedin_url)
-  );
+/**
+ * Check GHL for existing contacts to avoid duplicates
+ */
+async function getExistingGHLCompanies() {
+  try {
+    const locId = process.env.GHL_LOCATION_ID;
+    const existing = new Set();
+    const tags = ['ca-gc', 'ut-gc', 'gc-prospect'];
 
-  // Sort: contacts with email first (most actionable), then phone, then website only
-  valid.sort((a, b) => {
-    const score = p => (p.email ? 3 : 0) + (p.phone ? 2 : 0) + (p.website ? 1 : 0);
-    return score(b) - score(a);
+    for (const tag of tags) {
+      const r = await callGHL('GET', `/contacts/?locationId=${locId}&query=${tag}&limit=100`);
+      (r.contacts || []).forEach(c => {
+        if (c.companyName) existing.add(c.companyName.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      });
+    }
+    return existing;
+  } catch(e) {
+    return new Set();
+  }
+}
+
+/**
+ * Main orchestration function — called by continuous prospector
+ */
+async function findProspects(options = {}) {
+  // Get current state target
+  const targets = STATE_ROTATION.filter(s => s.campaign);
+  if (!targets.length) {
+    console.log('[Agent 01] No campaigns configured — set INSTANTLY_CA_CAMPAIGN_ID');
+    return [];
+  }
+
+  const target = targets[stateIndex % targets.length];
+  stateIndex++;
+
+  const { state, code } = target;
+  const cities = CITIES[state] || [];
+  const scrapeUrls = SCRAPE_URLS[state] || [];
+  const limit = options.limit || parseInt(process.env.BATCH_SIZE || '15');
+
+  console.log('\n[Agent 01] Orchestrating prospect hunt');
+  console.log('[Agent 01] State: ' + state + ' | Target: ' + limit + ' prospects');
+  console.log('[Agent 01] Sources: Apollo, Vibe, Firecrawl (' + scrapeUrls.length + ' URLs), Google CSE');
+
+  // Get existing GHL contacts to deduplicate
+  const existing = await getExistingGHLCompanies();
+  console.log('[Agent 01] GHL dedup set: ' + existing.size + ' known companies');
+
+  // Fire ALL sources in parallel
+  const [apolloResults, vibeResults, googleResults, ...scrapeResults] = await Promise.all([
+    fromApollo(state, limit),
+    fromVibe(state, limit),
+    fromGoogle(state, cities),
+    ...scrapeUrls.map(url => fromFirecrawl(url, state))
+  ]);
+
+  // Merge all sources
+  const allRaw = [
+    ...apolloResults,
+    ...vibeResults,
+    ...googleResults,
+    ...scrapeResults.flat()
+  ];
+
+  console.log('[Agent 01] Raw total from all sources: ' + allRaw.length);
+
+  // Deduplicate by company name
+  const seen = new Set();
+  const deduped = allRaw.filter(p => {
+    const key = (p.organization_name || p.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key.length < 2 || seen.has(key) || existing.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 
-  const final = valid.slice(0, limit);
+  console.log('[Agent 01] After dedup: ' + deduped.length + ' unique new prospects');
 
-  console.log('\n[Agent 01] Summary:');
-  console.log('  Apollo/Vibe contacts: ' + combined.length);
-  console.log('  New from scraping:    ' + scrapedNew.length);
-  console.log('  Total unique:         ' + all.length);
-  console.log('  Valid (have contact): ' + valid.length);
-  console.log('  Passing to Agent 02:  ' + final.length);
-  console.log('  With email:           ' + final.filter(p => p.email).length);
-  console.log('  With phone only:      ' + final.filter(p => !p.email && p.phone).length);
+  // Notify dashboard
+  await notifyDashboard('prospect_found', {
+    state,
+    sources: { apollo: apolloResults.length, vibe: vibeResults.length, google: googleResults.length, firecrawl: scrapeResults.flat().length },
+    total: deduped.length
+  });
 
   logRun('01-prospect-finder', {
-    state, limit,
-    apollo: results.apollo.length,
-    vibe: results.vibe.length,
-    scrape: results.scrape.length,
-    scrape_new: scrapedNew.length,
-    total_unique: all.length,
-    valid: valid.length,
-    final: final.length,
-    with_email: final.filter(p => p.email).length
+    state,
+    apollo: apolloResults.length,
+    vibe: vibeResults.length,
+    google: googleResults.length,
+    firecrawl: scrapeResults.flat().length,
+    total_raw: allRaw.length,
+    after_dedup: deduped.length
   });
 
-  return final;
+  // Return normalized contacts for the pipeline
+  return deduped.map(p => ({
+    name: p.name || p.first_name + ' ' + p.last_name || '',
+    first_name: p.first_name || '',
+    last_name: p.last_name || '',
+    title: p.title || 'Owner',
+    email: p.email || '',
+    phone: p.phone || '',
+    organization_name: p.organization_name || p.company || '',
+    website: p.website || '',
+    city: p.city || '',
+    state: p.state || code,
+    license_number: p.license_number || '',
+    rating: p.rating || '',
+    reviews: p.reviews || '',
+    source: p._source || 'unknown',
+    source_url: p.source_url || '',
+    campaign_id: target.campaign
+  }));
 }
 
 module.exports = { findProspects };
-if (require.main === module) {
-  findProspects({ limit: 10, state: 'California' })
-    .then(r => {
-      console.log('\n--- SAMPLE OUTPUT ---');
-      r.slice(0, 3).forEach((p, i) => console.log(i+1 + '.', p.organization_name, '|', p.email || 'no email', '|', p.phone || 'no phone', '|', p.source));
-    })
-    .catch(console.error);
-}
