@@ -13,7 +13,8 @@
     "florida": "node scripts/run-pipeline.js --mode prospect --state Florida",
     "arizona": "node scripts/run-pipeline.js --mode prospect --state Arizona",
     "start:prospector": "node scripts/run-prospector.js",
-    "start:continuous": "node scripts/prospector-continuous.js"
+    "start:continuous": "node scripts/prospector-continuous.js",
+    "start": "node scripts/prospector-continuous.js"
   },
   "dependencies": {
     "dotenv": "^16.0.0",
