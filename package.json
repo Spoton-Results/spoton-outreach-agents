@@ -1,6 +1,6 @@
 {
   "name": "subdraw-agents",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "18-agent autonomous outreach system for SubDraw — construction draw management SaaS",
   "main": "prospector.js",
   "scripts": {
