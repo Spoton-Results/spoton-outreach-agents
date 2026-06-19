@@ -2,7 +2,7 @@
   "name": "subdraw-agents",
   "version": "2.0.0",
   "description": "18-agent autonomous outreach system for SubDraw — construction draw management SaaS",
-  "main": "scripts/run-pipeline.js",
+  "main": "prospector.js",
   "scripts": {
     "swarm": "node scripts/run-pipeline.js",
     "prospect": "node scripts/run-pipeline.js --mode prospect",
@@ -14,7 +14,7 @@
     "arizona": "node scripts/run-pipeline.js --mode prospect --state Arizona",
     "start:prospector": "node scripts/run-prospector.js",
     "start:continuous": "node scripts/prospector-continuous.js",
-    "start": "node scripts/prospector-continuous.js"
+    "start": "node prospector.js"
   },
   "dependencies": {
     "dotenv": "^16.0.0",
