@@ -1,7 +1,7 @@
 const COLD_LEAD_DAYS = 45; // days before a non-responding lead is considered cold
 
 /**
- * Agent 12: Re-engagement Tracker — REBUILT
+ * Agent 12: Re-engagement Tracker " REBUILT
  * Fresh angles based on SubDraw's actual value props
  * Invoice protection, lien waiver season, year-end audit prep
  * Never references previous emails
@@ -10,19 +10,19 @@ require('dotenv').config({ path: './config/.env' });
 const { callClaude, callGHL, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
-const SYSTEM = `You are a re-engagement agent for SubDraw — construction draw management and invoice protection.
+const SYSTEM = `You are a re-engagement agent for SubDraw " construction draw management and invoice protection.
 Write re-engagement emails for GC leads that went cold 45+ days ago.
 NEVER reference previous emails. Use a completely fresh angle.
 
 SubDraw re-engagement angles (rotate through):
-- Year-end audit prep: "Construction payments are getting scrutinized — do you have an audit trail for every sub payment this year?"
+- Year-end audit prep: "Construction payments are getting scrutinized " do you have an audit trail for every sub payment this year?"
 - Lien waiver risk: "One missing lien waiver can freeze a project. How are you tracking them across all your subs?"
 - Change order gaps: "Change orders that aren't documented properly cost GCs thousands. Is yours tracked?"
 - Retainage release season: "If you're releasing retainage this quarter, is your documentation ready?"
 - New project season: "Starting a new project? The best time to set up a proper draw process is before the first invoice comes in."
 - Invoice protection: "How much did subcontractor billing errors cost you last year? Most GCs don't know."
 
-Under 75 words. Sound like a fresh outreach — not a follow-up.
+Under 75 words. Sound like a fresh outreach " not a follow-up.
 Return JSON only.`;
 
 async function runWithLimit(items, fn, limit = 3) {
@@ -91,7 +91,7 @@ async function writeReengagement(opp) {
 
   const prompt = `Write a re-engagement email for a cold GC lead using a fresh SubDraw angle.
 
-Contact: ${opp.contact?.name || 'there'} at ${opp.name?.replace(' — SubDraw', '') || 'their company'}
+Contact: ${opp.contact?.name || 'there'} at ${opp.name?.replace(' " SubDraw', '') || 'their company'}
 Month: ${month}, Q${quarter}
 Demo URL: ${icp.product.demo_url}
 
@@ -137,7 +137,7 @@ Follow-up context: ${followUpNote}
 Current month: ${month}
 Demo URL: ${icp.product.demo_url}
 
-This is a scheduled follow-up — they said try back later and this is later.
+This is a scheduled follow-up " they said try back later and this is later.
 Do NOT say "following up" or "circling back".
 Use a fresh angle. Reference the timing they gave if possible.
 Under 75 words.

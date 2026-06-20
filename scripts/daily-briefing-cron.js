@@ -11,7 +11,7 @@ const { detectCrossSellOpportunities } = require('../agents/31-crosssell-detecto
 const { runDormantRecovery } = require('../agents/35-dormant-pipeline-recovery');
 
 async function main() {
-  console.log('\n🌅 SubDraw Daily Briefing — ' + new Date().toISOString());
+  console.log('\n... SubDraw Daily Briefing " ' + new Date().toISOString());
   try {
     await runHealthCheck();
     await scoreAllLeads();
@@ -19,7 +19,7 @@ async function main() {
     await runDormantRecovery();
     await detectCrossSellOpportunities();
     await generateBriefing();
-    console.log('\n✅ Daily briefing complete');
+    console.log('\n... Daily briefing complete');
   } catch(e) {
     console.error('Daily briefing error:', e.message);
     process.exit(1);

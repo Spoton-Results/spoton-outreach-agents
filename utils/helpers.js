@@ -64,7 +64,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 module.exports = { callClaude, callGHL, callInstantly, logRun, sleep };
 
-// ── Dashboard webhook notifier ──────────────────────────────────────────────
+// "" Dashboard webhook notifier """"""""""""""""""""""""""""""""""""""""""""""
 // Every agent action posts to the dashboard for real-time activity feed
 async function notifyDashboard(type, data) {
   const url = process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app';
@@ -77,7 +77,7 @@ async function notifyDashboard(type, data) {
       timeout: 3000
     });
   } catch(e) {
-    // Non-blocking — never fail because dashboard is down
+    // Non-blocking " never fail because dashboard is down
   }
 }
 

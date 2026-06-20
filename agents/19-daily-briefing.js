@@ -1,5 +1,5 @@
 /**
- * Agent 19: Daily Intelligence Briefing — REBUILT
+ * Agent 19: Daily Intelligence Briefing " REBUILT
  * 5am SMS with SubDraw-specific metrics
  * Tracks: new signups by plan, subcontract volume, pipeline health, drop-offs recovered
  */
@@ -7,7 +7,7 @@ require('dotenv').config({ path: './config/.env' });
 const { callClaude, callGHL, callInstantly, logRun } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
-const SYSTEM = `You are an AI chief of staff for SubDraw — construction draw management SaaS.
+const SYSTEM = `You are an AI chief of staff for SubDraw " construction draw management SaaS.
 Write a plain-English morning briefing for the founder (Shawn).
 SubDraw sells to General Contractors. Pricing: $149/$299/$599/mo by active subcontracts.
 Be direct, specific, action-oriented. Under 300 words. Highlight what needs human attention.
@@ -76,7 +76,7 @@ Cover:
 5. One recommended action for today
 
 Return: {
-  "sms_version": "under 160 chars — just the numbers and one action",
+  "sms_version": "under 160 chars " just the numbers and one action",
   "full_brief": "full plain text under 300 words",
   "action_needed": true/false,
   "priority_action": "the single most important thing to do today",
@@ -93,7 +93,7 @@ Return: {
       await callGHL('POST', '/conversations/messages', {
         type: 'SMS',
         contactId,
-        message: '🔨 SubDraw Daily:\n' + briefing.sms_version + (briefing.revenue_alert ? '\n🚨 REVENUE ALERT' : '')
+        message: '" SubDraw Daily:\n' + briefing.sms_version + (briefing.revenue_alert ? '\n REVENUE ALERT' : '')
       });
     }
   } catch(e) { console.error('[Agent 19] SMS error:', e.message); }

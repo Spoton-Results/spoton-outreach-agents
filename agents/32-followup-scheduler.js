@@ -1,6 +1,6 @@
 /**
  * Agent 32: Follow-Up Scheduler
- * Fills the most expensive gap in the system —
+ * Fills the most expensive gap in the system "
  * when someone says "not now, try me in 3 months" this agent
  * parses the timeframe, calculates the exact follow-up date,
  * and writes it to GHL so Agent 12 picks it up automatically.
@@ -19,17 +19,17 @@ const SYSTEM = `You are a follow-up scheduling agent for SubDraw sales outreach.
 Parse a "not now" reply from a General Contractor and determine the exact follow-up date.
 
 Common timeframes GCs say and what they mean:
-- "try me in 3 months" → 90 days
-- "reach out in Q4" → first day of Q4 (October 1)
-- "after the holidays" → January 8
-- "next year" → January 15 next year
-- "busy season" / "after busy season" → 90 days
-- "after this project wraps" → 60 days (assume 60 if no specific date)
-- "not right now" / "maybe later" → 45 days (default)
-- "call me in 6 months" → 180 days
-- "end of year" → December 1
-- "next quarter" → first day of next quarter
-- no specific timeframe mentioned → 45 days default
+- "try me in 3 months" ' 90 days
+- "reach out in Q4" ' first day of Q4 (October 1)
+- "after the holidays" ' January 8
+- "next year" ' January 15 next year
+- "busy season" / "after busy season" ' 90 days
+- "after this project wraps" ' 60 days (assume 60 if no specific date)
+- "not right now" / "maybe later" ' 45 days (default)
+- "call me in 6 months" ' 180 days
+- "end of year" ' December 1
+- "next quarter" ' first day of next quarter
+- no specific timeframe mentioned ' 45 days default
 
 Return JSON only.`;
 
@@ -51,7 +51,7 @@ Return: {
   "timeframe_mentioned": "...",
   "days_until_followup": X,
   "followup_date": "YYYY-MM-DD",
-  "followup_note": "one sentence reminder of context — e.g. 'Said busy with Oak Street project, check back when it wraps'",
+  "followup_note": "one sentence reminder of context " e.g. 'Said busy with Oak Street project, check back when it wraps'",
   "confidence": "high|medium|low"
 }`;
 
@@ -77,7 +77,7 @@ async function scheduleFollowUp(reply) {
     // Validate Claude-returned date before writing to GHL
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!schedule.followup_date || !dateRegex.test(schedule.followup_date)) {
-      console.error('[Agent 32] Invalid followup_date from Claude:', schedule.followup_date, '� using 45-day default');
+      console.error('[Agent 32] Invalid followup_date from Claude:', schedule.followup_date, '-- using 45-day default');
       const fallback = new Date();
       fallback.setDate(fallback.getDate() + 45);
       schedule.followup_date = fallback.toISOString().split('T')[0];
@@ -102,13 +102,13 @@ async function scheduleFollowUp(reply) {
     // Also create a GHL task so it shows up in their task list
     try {
       await callGHL('POST', '/contacts/' + contact.id + '/tasks', {
-        title: 'SubDraw follow-up — ' + schedule.followup_note,
+        title: 'SubDraw follow-up " ' + schedule.followup_note,
         dueDate: new Date(schedule.followup_date).toISOString(),
         completed: false,
         description: 'Auto-scheduled by Agent 32. Original reply: ' + reply.body?.substring(0, 200)
       });
     } catch(e) {
-      // Task creation is non-blocking — custom field is the source of truth
+      // Task creation is non-blocking " custom field is the source of truth
       console.log('[Agent 32] Task creation skipped:', e.message);
     }
 

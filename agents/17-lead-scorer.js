@@ -34,7 +34,7 @@ async function scoreAllLeads() {
     const contacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=agent-outreach&limit=100');
     const allContacts = contacts.contacts || [];
     if (allContacts.length === 100) {
-      console.warn('[Agent 17] WARNING: fetched exactly 100 contacts — results may be truncated. Pagination not implemented.');
+      console.warn('[Agent 17] WARNING: fetched exactly 100 contacts -- results may be truncated. Pagination not implemented.');
     }
 
     console.log('[Agent 17] Scoring ' + allContacts.length + ' contacts...');

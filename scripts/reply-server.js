@@ -5,11 +5,11 @@
  * 
  * When a GC replies to an email:
  *   Instantly webhook fires (< 1 second)
- *   → This server receives it
- *   → Classifies the reply (Agent 10)
- *   → Routes to correct agent (11, 13, 32)
- *   → Updates GHL pipeline stage
- *   → Notifies dashboard
+ *   ' This server receives it
+ *   ' Classifies the reply (Agent 10)
+ *   ' Routes to correct agent (11, 13, 32)
+ *   ' Updates GHL pipeline stage
+ *   ' Notifies dashboard
  *   Total time: 3-8 seconds instead of up to 30 minutes
  * 
  * Also handles inbound SMS replies from GHL webhook.
@@ -30,12 +30,12 @@ const { handleObjection }   = require('../agents/13-objection-handler');
 const { notifyDashboard, logRun } = require('../utils/helpers');
 
 const PORT = process.env.REPLY_SERVER_PORT || 3001;
-const MAX_BODY_BYTES = 1_000_000; // 1MB � reject oversized payloads
+const MAX_BODY_BYTES = 1_000_000; // 1MB -- reject oversized payloads
 const INSTANTLY_WEBHOOK_SECRET = process.env.INSTANTLY_WEBHOOK_SECRET || '';
 const GHL_WEBHOOK_SECRET = process.env.GHL_WEBHOOK_SECRET || '';
 const processedIds = new Set();
 
-// Queue for processing — prevents hammering Claude API if multiple replies come in at once
+// Queue for processing " prevents hammering Claude API if multiple replies come in at once
 const replyQueue = [];
 let isProcessing = false;
 
@@ -116,7 +116,7 @@ async function processReply(data) {
     const category = classification.category;
 
     if (category === 'auto_reply') {
-      console.log('[ReplyServer] Auto-reply — skipping');
+      console.log('[ReplyServer] Auto-reply " skipping');
       return;
     }
 
@@ -140,13 +140,13 @@ async function processReply(data) {
       const { callGHL } = require('../utils/helpers');
       if (reply.contact_id) {
         await callGHL('POST', `/contacts/${reply.contact_id}/notes`, {
-          body: 'Wrong person — ' + classification.note + '\nReply: ' + reply.body
+          body: 'Wrong person " ' + classification.note + '\nReply: ' + reply.body
         }).catch(() => {});
       }
     }
 
     const elapsed = Date.now() - start;
-    console.log('[ReplyServer] ✓ Done in ' + elapsed + 'ms — category: ' + category);
+    console.log('[ReplyServer] " Done in ' + elapsed + 'ms " category: ' + category);
 
     // Notify dashboard
     await notifyDashboard('reply_processed', {
@@ -165,7 +165,7 @@ async function processReply(data) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Parse request body � enforces MAX_BODY_BYTES to prevent OOM from large payloads
+// Parse request body -- enforces MAX_BODY_BYTES to prevent OOM from large payloads
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -188,7 +188,7 @@ function parseBody(req) {
 
 // Verify HMAC-SHA256 webhook signature
 function verifySignature(payload, signature, secret) {
-  if (!secret) return true; // No secret configured � skip (warn in logs)
+  if (!secret) return true; // No secret configured -- skip (warn in logs)
   const crypto = require('crypto');
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   try {
@@ -208,9 +208,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Instantly webhook — email reply received
+  // Instantly webhook " email reply received
   if (method === 'POST' && url === '/webhook/reply') {
-    res.writeHead(200); // Ack immediately — never make Instantly wait
+    res.writeHead(200); // Ack immediately " never make Instantly wait
     res.end('OK');
 
     const payload = await parseBody(req);
@@ -220,12 +220,12 @@ const server = http.createServer(async (req, res) => {
     if (eventType.includes('reply') || eventType.includes('replied') || payload.reply_text || payload.body) {
       replyQueue.push({ source: 'instantly', payload });
       setImmediate(processQueue);
-      console.log('[ReplyServer] Queued Instantly reply — queue size: ' + replyQueue.length);
+      console.log('[ReplyServer] Queued Instantly reply " queue size: ' + replyQueue.length);
     }
     return;
   }
 
-  // GHL webhook — SMS reply received
+  // GHL webhook " SMS reply received
   if (method === 'POST' && (url === '/webhook/sms' || url === '/webhook/ghl')) {
     res.writeHead(200);
     res.end('OK');
@@ -238,7 +238,7 @@ const server = http.createServer(async (req, res) => {
       if (payload.direction === 'inbound' || type.includes('Inbound') || payload.messageType === 'TYPE_SMS') {
         replyQueue.push({ source: 'ghl_sms', payload });
         setImmediate(processQueue);
-        console.log('[ReplyServer] Queued SMS reply — queue size: ' + replyQueue.length);
+        console.log('[ReplyServer] Queued SMS reply " queue size: ' + replyQueue.length);
       }
     }
     return;
@@ -258,7 +258,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log('\n🚀 SubDraw Reply Server running on port ' + PORT);
+  console.log('\n SubDraw Reply Server running on port ' + PORT);
   console.log('   Webhook URL: https://your-reply-handler.railway.app/webhook/reply');
   console.log('   SMS URL:     https://your-reply-handler.railway.app/webhook/sms');
   console.log('   Health:      https://your-reply-handler.railway.app/health');
@@ -267,7 +267,7 @@ server.listen(PORT, () => {
 
 // Still run a fallback poll every 30 min to catch any webhooks that were missed
 setInterval(async () => {
-  console.log('[ReplyServer] Fallback poll — checking for missed replies...');
+  console.log('[ReplyServer] Fallback poll " checking for missed replies...');
   try {
     await classifyReplies();
   } catch(e) {

@@ -2,17 +2,17 @@ const DORMANT_DAYS = 14; // days of silence before a replied lead is considered 
 
 /**
  * Agent 35: Dormant Pipeline Recovery
- * Canonical Gap #4 — different from cold lead recovery (Agent 12)
+ * Canonical Gap #4 " different from cold lead recovery (Agent 12)
  *
  * Agent 12 handles: leads that were always cold, never engaged, 45+ days old
  * Agent 35 handles: leads that SHOWED INTEREST then went silent
  *   - Had a reply classified as interested or question
  *   - Got moved to Replied stage in GHL
- *   - Then nothing happened — no demo, no signup, no further contact
+ *   - Then nothing happened " no demo, no signup, no further contact
  *
  * These are your highest value recovery targets.
  * They raised their hand. Something got in the way.
- * The recovery message is completely different — warmer, references
+ * The recovery message is completely different " warmer, references
  * their specific interest, treats them as a warm lead not a cold one.
  *
  * Runs daily 5am alongside Agent 12
@@ -23,7 +23,7 @@ const icp = require('../config/icp.json');
 
 const SYSTEM = `You are a dormant pipeline recovery agent for SubDraw.
 Write re-engagement emails for leads who showed genuine interest then went silent.
-These are NOT cold leads — they replied, asked questions, or showed intent.
+These are NOT cold leads " they replied, asked questions, or showed intent.
 Something got in the way. Your job is to pick up where they left off.
 Reference their interest without being pushy. Under 100 words. Return JSON only.`;
 
@@ -93,7 +93,7 @@ Demo URL: ${icp.product.demo_url}
 Pick up where they left off naturally.
 Don't say "following up" or "circling back".
 Reference their original interest if you know it.
-Offer the demo link again — no call needed.
+Offer the demo link again " no call needed.
 Under 100 words.
 
 Return: { "subject": "...", "body": "..." }`;
