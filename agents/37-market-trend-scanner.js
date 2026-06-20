@@ -89,7 +89,8 @@ Return: {
     try { variants = JSON.parse(fs.readFileSync(variantsPath, 'utf8')); } catch(e) {}
     variants.market_angle = trends.recommended_email_angle_addition;
     variants.market_urgency = trends.urgency_signals;
-    fs.writeFileSync(variantsPath, JSON.stringify(variants, null, 2));
+    fs.mkdirSync(path.dirname(variantsPath), { recursive: true });
+  fs.writeFileSync(variantsPath, JSON.stringify(variants, null, 2));
     console.log('[Agent 37] HIGH ALERT — updated email variants with market angle');
   }
 

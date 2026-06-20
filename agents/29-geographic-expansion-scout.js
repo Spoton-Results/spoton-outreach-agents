@@ -42,6 +42,7 @@ Return: {
   const analysis = JSON.parse(await callClaude(SYSTEM, prompt));
 
   const outputPath = path.join(__dirname, '../config/expansion-plan.json');
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify({ updated: new Date().toISOString(), ...analysis }, null, 2));
 
   logRun('29-geographic-expansion-scout', { top_next_state: analysis.top_3_states?.[0]?.state });

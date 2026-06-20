@@ -49,6 +49,7 @@ Return: {
 
     // Save winning variants for Agent 05 to use
     const variantsPath = path.join(__dirname, '../config/winning-variants.json');
+    fs.mkdirSync(path.dirname(variantsPath), { recursive: true });
     fs.writeFileSync(variantsPath, JSON.stringify({
       updated: new Date().toISOString(),
       ...analysis

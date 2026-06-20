@@ -25,11 +25,12 @@ require('dotenv').config({ path: './config/.env' });
 const http = require('http');
 const { classifyReplies, classifySingleReply } = require('../agents/10-reply-classifier');
 const { sendDemoLink }      = require('../agents/11-demo-link-sender');
-const { scheduleFollowUp }  = require('../agents/32-follow-up-scheduler');
+const { scheduleFollowUp }  = require('../agents/32-followup-scheduler');
 const { handleObjection }   = require('../agents/13-objection-handler');
 const { notifyDashboard, logRun } = require('../utils/helpers');
 
 const PORT = process.env.REPLY_SERVER_PORT || 3001;
+const processedIds = new Set();
 
 // Queue for processing — prevents hammering Claude API if multiple replies come in at once
 const replyQueue = [];
@@ -92,6 +93,10 @@ async function processReply(data) {
       console.log('[ReplyServer] Skipping empty reply');
       return;
     }
+
+    const replyId = reply.id || ((reply.from_email || reply.from_phone) + ':' + reply.timestamp);
+    if (replyId && processedIds.has(replyId)) { console.log('[ReplyServer] Skipping duplicate reply'); return; }
+    if (replyId) processedIds.add(replyId);
 
     console.log('[ReplyServer] From:', reply.from_email || reply.from_phone);
     console.log('[ReplyServer] Preview:', reply.body.substring(0, 80));

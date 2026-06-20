@@ -168,7 +168,12 @@ async function pushToInstantly(contact, campaignId) {
       }
     })
   });
-  return r.ok;
+  if (!r.ok) {
+    const errBody = await r.text().catch(() => '');
+    console.log('[Agent 01] Instantly push failed (' + r.status + ') for ' + contact.email + ':', errBody.substring(0, 200));
+    return false;
+  }
+  return true;
 }
 
 async function findProspects(options = {}) {

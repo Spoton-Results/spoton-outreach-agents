@@ -26,6 +26,14 @@ SubDraw's core workflow (in order):
 10. Invoice generated
 11. Payment tracked`;
 
+async function runWithLimit(items, fn, limit = 3) {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    results.push(...await Promise.all(items.slice(i, i + limit).map(fn)));
+  }
+  return results;
+}
+
 async function findDropoffs() {
   console.log('[Agent 21] Scanning for funnel drop-offs...');
   try {
@@ -99,7 +107,7 @@ Return: { "subject": "...", "body": "..." }`;
 async function runDropoffDetector() {
   const dropoffs = await findDropoffs();
   if (!dropoffs.length) { console.log('[Agent 21] No drop-offs to recover'); return []; }
-  return Promise.all(dropoffs.map(recoverDropoff));
+  return runWithLimit(dropoffs, recoverDropoff, 3);
 }
 
 module.exports = { runDropoffDetector };

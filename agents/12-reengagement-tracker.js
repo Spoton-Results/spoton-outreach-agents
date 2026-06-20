@@ -58,9 +58,13 @@ async function findScheduledFollowUps() {
     );
 
     const due = (contacts.contacts || []).filter(c => {
-      const followUpDate = c.customFields?.find(f => f.key === 'follow_up_date')?.field_value;
+      const rawDate = c.customFields?.find(f => f.key === 'follow_up_date')?.field_value;
       const alreadyFollowedUp = c.tags?.includes('followup-sent');
-      return followUpDate && followUpDate <= today && !alreadyFollowedUp;
+      if (!rawDate || alreadyFollowedUp) return false;
+      try {
+        const followUpDate = new Date(rawDate).toISOString().split('T')[0];
+        return followUpDate <= today;
+      } catch { return false; }
     });
 
     console.log('[Agent 12] Found ' + due.length + ' scheduled follow-ups due today');

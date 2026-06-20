@@ -38,7 +38,7 @@ async function fetchPage(url, options = {}) {
     'Connection': 'keep-alive',
   };
 
-  const res = await fetch(url, { headers, redirect: 'follow', timeout: 15000 });
+  const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error('HTTP ' + res.status + ' from ' + url);
   return res.text();
 }

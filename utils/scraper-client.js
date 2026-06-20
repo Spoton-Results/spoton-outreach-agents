@@ -54,7 +54,7 @@ async function scrapeGoogleMaps(city, state) {
   try {
     const res = await fetch(
       `https://serpapi.com/search?engine=google_maps&q=${query}&type=search&api_key=${process.env.SERP_API_KEY}`,
-      { timeout: 10000 }
+      { signal: AbortSignal.timeout(10000) }
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -98,7 +98,7 @@ async function scrapeYelp(city, state) {
     
     const res = await fetch('https://api.yelp.com/v3/businesses/search?' + params, {
       headers: { 'Authorization': 'Bearer ' + process.env.YELP_API_KEY },
-      timeout: 10000
+      signal: AbortSignal.timeout(10000)
     });
     
     if (!res.ok) return [];
@@ -143,7 +143,7 @@ async function scrapeCLSB(city) {
         'User-Agent': 'Mozilla/5.0 (compatible; research bot)',
         'Accept': 'text/html'
       },
-      timeout: 15000
+      signal: AbortSignal.timeout(15000)
     });
     
     if (!res.ok) return [];
@@ -189,7 +189,7 @@ async function extractContactFromWebsite(company, callClaude) {
   try {
     const res = await fetch(company.website, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; research bot)' },
-      timeout: 8000
+      signal: AbortSignal.timeout(8000)
     });
     if (!res.ok) return company;
     

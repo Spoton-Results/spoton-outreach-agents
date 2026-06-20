@@ -58,7 +58,14 @@ async function findDormantLeads() {
 }
 
 async function recoverDormantLead(opp) {
-  const contact = opp.contact || {};
+  let contact = opp.contact || {};
+  if (contact.id && !contact.firstName && !contact.tags) {
+    try {
+      const fetched = await callGHL('GET', '/contacts/' + contact.id);
+      contact = fetched.contact || contact;
+    } catch(e) { console.warn('[Agent 35] Could not fetch contact:', e.message); }
+  }
+  if (!contact.id) { console.log('[Agent 35] No contact for opp:', opp.id); return { opp, skipped: true }; }
   const tags = contact.tags || [];
 
   // Determine what they originally showed interest in
