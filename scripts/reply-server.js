@@ -30,6 +30,9 @@ const { handleObjection }   = require('../agents/13-objection-handler');
 const { notifyDashboard, logRun } = require('../utils/helpers');
 
 const PORT = process.env.REPLY_SERVER_PORT || 3001;
+const MAX_BODY_BYTES = 1_000_000; // 1MB — reject oversized payloads
+const INSTANTLY_WEBHOOK_SECRET = process.env.INSTANTLY_WEBHOOK_SECRET || '';
+const GHL_WEBHOOK_SECRET = process.env.GHL_WEBHOOK_SECRET || '';
 const processedIds = new Set();
 
 // Queue for processing â€” prevents hammering Claude API if multiple replies come in at once
@@ -96,9 +99,13 @@ async function processReply(data) {
 
     const replyId = reply.id || ((reply.from_email || reply.from_phone) + ':' + reply.timestamp);
     if (replyId && processedIds.has(replyId)) { console.log('[ReplyServer] Skipping duplicate reply'); return; }
-    if (replyId) processedIds.add(replyId);
+    if (replyId) {
+      if (processedIds.size > 10000) processedIds.clear(); // prevent unbounded memory growth
+      processedIds.add(replyId);
+    }
 
-    console.log('[ReplyServer] From:', reply.from_email || reply.from_phone);
+    // Log basic request info for production debugging
+    console.log('[ReplyServer] Source:', source, '| From:', reply.from_email || reply.from_phone, '| Body preview:', (reply.body || '').substring(0, 80));
     console.log('[ReplyServer] Preview:', reply.body.substring(0, 80));
 
     // Agent 10: Classify the reply instantly
@@ -158,17 +165,35 @@ async function processReply(data) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Parse request body
+// Parse request body — enforces MAX_BODY_BYTES to prevent OOM from large payloads
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        req.destroy();
+        return reject(new Error('Request body too large'));
+      }
+      body += chunk;
+    });
     req.on('end', () => {
       try { resolve(JSON.parse(body)); }
       catch(e) { resolve({}); }
     });
     req.on('error', reject);
   });
+}
+
+// Verify HMAC-SHA256 webhook signature
+function verifySignature(payload, signature, secret) {
+  if (!secret) return true; // No secret configured — skip (warn in logs)
+  const crypto = require('crypto');
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature || '', 'hex'), Buffer.from(expected, 'hex'));
+  } catch { return false; }
 }
 
 // HTTP server

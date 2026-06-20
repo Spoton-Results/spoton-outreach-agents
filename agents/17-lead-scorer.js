@@ -33,6 +33,9 @@ async function scoreAllLeads() {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
     const contacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=agent-outreach&limit=100');
     const allContacts = contacts.contacts || [];
+    if (allContacts.length === 100) {
+      console.warn('[Agent 17] WARNING: fetched exactly 100 contacts — results may be truncated. Pagination not implemented.');
+    }
 
     console.log('[Agent 17] Scoring ' + allContacts.length + ' contacts...');
     const scored = [];
@@ -63,7 +66,13 @@ Score 1-100 and give ONE recommended action.
 
 Return: { "score": X, "tier": "hot|warm|cold|dead", "recommended_action": "...", "reason": "..." }`;
 
-      const scoring = JSON.parse(await callClaude(SYSTEM, prompt));
+      let scoring;
+      try {
+        scoring = JSON.parse(await callClaude(SYSTEM, prompt));
+      } catch(e) {
+        console.error('[Agent 17] Parse error for ' + contact.firstName + ' ' + contact.lastName + ':', e.message);
+        continue; // skip this contact, don't abort the whole batch
+      }
 
       // Update score in GHL custom field
       try {

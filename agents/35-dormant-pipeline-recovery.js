@@ -1,3 +1,5 @@
+const DORMANT_DAYS = 14; // days of silence before a replied lead is considered dormant
+
 /**
  * Agent 35: Dormant Pipeline Recovery
  * Canonical Gap #4 — different from cold lead recovery (Agent 12)
@@ -34,7 +36,7 @@ async function findDormantLeads() {
 
     // Find opportunities in Replied stage older than 14 days with no recent activity
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 14);
+    cutoff.setDate(cutoff.getDate() - DORMANT_DAYS);
 
     const opps = await callGHL('GET',
       '/opportunities/search?pipeline_id=' + pipelineId +

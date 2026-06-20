@@ -19,6 +19,7 @@ async function callClaude(systemPrompt, userPrompt, options = {}) {
   });
   if (!response.ok) throw new Error('Claude API error: ' + response.status);
   const data = await response.json();
+  if (!data.content?.[0]?.text) throw new Error('Claude returned empty content: ' + JSON.stringify(data));
   return data.content[0].text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 }
 
@@ -33,7 +34,7 @@ async function callGHL(method, endpoint, body = null) {
     },
     body: body ? JSON.stringify(body) : null
   });
-  if (!res.ok) throw new Error('GHL error: ' + res.status + ' ' + await res.text());
+  if (!res.ok) throw new Error('GHL error: ' + res.status + ' ' + (await res.text()).substring(0, 200));
   return res.json();
 }
 

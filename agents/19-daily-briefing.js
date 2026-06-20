@@ -23,7 +23,7 @@ async function callStripe(endpoint) {
 
 async function gatherSignals() {
   const since24h = Math.floor(Date.now() / 1000) - 86400;
-  const signals = { timestamp: new Date().toISOString() };
+  const signals = { timestamp: new Date().toISOString(), new_mrr: 0, new_signups: 0, cancellations: 0 };
 
   try {
     const events = await callStripe('/events?created[gte]=' + since24h + '&limit=100');

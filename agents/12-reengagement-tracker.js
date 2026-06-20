@@ -1,3 +1,5 @@
+const COLD_LEAD_DAYS = 45; // days before a non-responding lead is considered cold
+
 /**
  * Agent 12: Re-engagement Tracker — REBUILT
  * Fresh angles based on SubDraw's actual value props
@@ -23,12 +25,20 @@ SubDraw re-engagement angles (rotate through):
 Under 75 words. Sound like a fresh outreach — not a follow-up.
 Return JSON only.`;
 
+async function runWithLimit(items, fn, limit = 3) {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    results.push(...await Promise.all(items.slice(i, i + limit).map(fn)));
+  }
+  return results;
+}
+
 async function findColdLeads() {
   console.log('[Agent 12] Finding cold GC leads (45+ days)...');
   try {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 45);
+    cutoff.setDate(cutoff.getDate() - COLD_LEAD_DAYS);
 
     const opps = await callGHL('GET',
       '/opportunities/search?pipeline_id=' + (process.env.GHL_PIPELINE_ID || icp.ghl.pipeline_id) +
@@ -166,14 +176,14 @@ async function findAndReengageColdLeads() {
 
   // Process 45-day cold leads
   if (cold.length) {
-    const coldResults = await Promise.all(cold.map(writeReengagement));
+    const coldResults = await runWithLimit(cold, writeReengagement, 3);
     results.push(...coldResults);
   }
 
   // Process scheduled follow-ups (not-now leads whose date is today)
   if (scheduledDue.length) {
     console.log('[Agent 12] Processing ' + scheduledDue.length + ' scheduled follow-ups...');
-    const scheduledResults = await Promise.all(scheduledDue.map(writeScheduledFollowUp));
+    const scheduledResults = await runWithLimit(scheduledDue, writeScheduledFollowUp, 3);
     results.push(...scheduledResults);
   }
 

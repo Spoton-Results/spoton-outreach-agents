@@ -74,6 +74,15 @@ async function scheduleFollowUp(reply) {
       return null;
     }
 
+    // Validate Claude-returned date before writing to GHL
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!schedule.followup_date || !dateRegex.test(schedule.followup_date)) {
+      console.error('[Agent 32] Invalid followup_date from Claude:', schedule.followup_date, '— using 45-day default');
+      const fallback = new Date();
+      fallback.setDate(fallback.getDate() + 45);
+      schedule.followup_date = fallback.toISOString().split('T')[0];
+    }
+
     // Write follow-up date and note to GHL custom fields
     await callGHL('PUT', '/contacts/' + contact.id, {
       tags: [
