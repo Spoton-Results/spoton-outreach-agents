@@ -91,7 +91,7 @@ Return JSON:
   "email_4": { "subject": "...", "body": "..." }
 }`;
 
-  return JSON.parse(await callClaude(SYSTEM, prompt));
+  try { return JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error('[Agent 05] Parse error:', e.message); return null; }
 }
 
 async function writeSequenceBatch(prospects) {

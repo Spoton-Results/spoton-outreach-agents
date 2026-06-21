@@ -50,7 +50,7 @@ Return: {
   "key_signal": "the single most important enrichment finding"
 }`;
 
-  return JSON.parse(await callClaude(SYSTEM, prompt));
+  try { return JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 33] Parse error:", e.message); return { ...prospect, enriched: false }; }
 }
 
 async function enrichBatch(prospects) {

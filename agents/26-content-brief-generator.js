@@ -65,7 +65,7 @@ Return: {
   "target_intent": "informational|commercial|transactional"
 }`;
 
-    const brief = JSON.parse(await callClaude(SYSTEM, prompt));
+    let brief; try { brief = JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 26] Parse error:", e.message); continue; }
     briefs.push({ topic, brief });
   }
 

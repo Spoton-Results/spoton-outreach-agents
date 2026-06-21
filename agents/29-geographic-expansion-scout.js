@@ -39,7 +39,7 @@ Return: {
   "expansion_sequence": "recommended order to enter all states"
 }`;
 
-  const analysis = JSON.parse(await callClaude(SYSTEM, prompt));
+  let analysis; try { analysis = JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 29] Parse error:", e.message); analysis = {}; }
 
   const outputPath = path.join(__dirname, '../config/expansion-plan.json');
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });

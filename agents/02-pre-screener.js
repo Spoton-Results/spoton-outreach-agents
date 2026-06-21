@@ -70,7 +70,8 @@ For each prospect return:
 
 Return JSON array: [{ "id": "...", "score": X, "verdict": "qualified|disqualified", "reason": "...", "recommended_plan": "...", "pain_point": "...", "sub_count_estimate": X }]`;
 
-    const results = JSON.parse(await callClaude(SYSTEM, prompt));
+    let results;
+    try { results = JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 02] Parse error:", e.message); results = []; }
     results.forEach(r => {
       if (r.verdict === 'qualified' && r.score >= 6) {
         const prospect = batch.find(p => p.id === r.id);

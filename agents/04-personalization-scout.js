@@ -49,7 +49,7 @@ Return: {
   "connects_to_pain": "how this hook naturally leads into the invoice protection pitch"
 }`;
 
-  return JSON.parse(await callClaude(SYSTEM, prompt));
+  try { return JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 04] Parse error:", e.message); return { hook: "Running commercial jobs in " + (prospect.city || prospect.state || "your area") + ",", hook_type: "inference", confidence: "low" }; }
 }
 
 async function scoutBatch(prospects) {

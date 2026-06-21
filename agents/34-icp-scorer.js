@@ -87,7 +87,7 @@ Return: {
   "estimated_ltv": "low_under_500|medium_500_2000|high_over_2000"
 }`;
 
-  return JSON.parse(await callClaude(SYSTEM, prompt));
+  try { return JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 34] Parse error:", e.message); return { ...prospect, icp_score: 5, icp_tier: "medium" }; }
 }
 
 async function scoreBatch(prospects) {

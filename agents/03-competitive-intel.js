@@ -46,7 +46,7 @@ Return: {
   "sub_network_potential": "how many subs would join SubDraw free if this GC signs up"
 }`;
 
-  return JSON.parse(await callClaude(SYSTEM, prompt));
+  try { return JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 03] Parse error:", e.message); return {}; }
 }
 
 async function gatherIntelBatch(prospects) {
