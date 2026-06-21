@@ -1,18 +1,14 @@
 /**
- * SubDraw SMS Blast — Smart Queue Sender with Send Window
+ * SubDraw SMS Blast — Smart Queue Sender
  *
- * ONLY sends between 6:45am–5pm local time, Mon–Fri.
- * Hard stops outside that window — will not text GCs at 3am.
- *
- * Usage:
- *   node scripts/sms-blast.js              # dry run
- *   node scripts/sms-blast.js --send       # live send (respects time window)
- *   node scripts/sms-blast.js --send --tag=ca-gc
- *   node scripts/sms-blast.js --send --tag=ut-gc
- *   node scripts/sms-blast.js --send --limit=50
+ * Fixes:
+ * 1. Time window gate — only sends 6:45am-5pm local Mon-Fri
+ * 2. Pre-send dedup check — verifies sms-sent tag NOT on contact before EVERY send
+ * 3. Skips 555 numbers (AI-generated fake placeholders)
+ * 4. Skips numbers that aren't 10-11 digits (invalid format)
+ * 5. In-memory sent set — prevents double-send even if tag write lags
  */
 
-// Railway injects env vars directly — dotenv only for local dev
 try { require('dotenv').config({ path: './config/.env' }); } catch(e) {}
 
 console.log('[SMS-BLAST] Script starting — GHL_API_KEY present:', !!process.env.GHL_API_KEY);
@@ -27,48 +23,48 @@ const FROM_NUMBER  = '+14352911877';
 const SMS_MESSAGE = (firstName) =>
   `Hey ${firstName || 'there'}, quick question — are your subs billing you accurately on every draw? Most GCs lose $8-15K per job without knowing it. Check it free: subdraw.com/login –Shawn`;
 
-// Safety limits
-const SMS_DAILY_CAP     = 1700;  // covers all 1,627 with buffer (account limit: 20K/day)
-const DELAY_BETWEEN_MS  = 1200;  // 1.2s between sends (~50/min)
-const MAX_RETRIES       = 3;
-const RETRY_BACKOFF_MS  = 3000;
+const SMS_DAILY_CAP    = 1700;
+const DELAY_BETWEEN_MS = 1500; // bumped to 1.5s to give tag writes time to settle
+const MAX_RETRIES      = 3;
+const RETRY_BACKOFF_MS = 3000;
 
-// CLI args
 const args       = process.argv.slice(2);
 const DRY_RUN    = !args.includes('--send');
 const TAG_FILTER = (args.find(a => a.startsWith('--tag=')) || '').replace('--tag=', '') || 'gc-prospect';
 const LIMIT      = parseInt((args.find(a => a.startsWith('--limit=')) || '').replace('--limit=', '') || '99999');
 
 // ── SEND WINDOW ──────────────────────────────────────────────────────────────
-// CA contacts: 6:45am–5pm Pacific (UTC-7 summer = UTC 13:45–00:00)
-// UT contacts: 6:45am–5pm Mountain (UTC-6 summer = UTC 12:45–23:00)
-// Use Mountain start (12:45 UTC) and Pacific end (23:59 UTC) as the safe window
-// This ensures NO texts go out before 6:45am local for either state
-
+// Mountain 6:45am = UTC 12:45 | Pacific 5pm = UTC 23:59
 function isWithinSendWindow() {
-  const now    = new Date();
-  const day    = now.getUTCDay();   // 0=Sun 6=Sat
-  const mins   = now.getUTCHours() * 60 + now.getUTCMinutes();
-  if (day === 0 || day === 6) return false; // no weekends
-  return mins >= 765 && mins <= 1439; // 12:45 UTC to 23:59 UTC
+  const now  = new Date();
+  const day  = now.getUTCDay();
+  const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  if (day === 0 || day === 6) return false;
+  return mins >= 765 && mins <= 1439;
 }
 
 function minutesUntilWindow() {
-  const now  = new Date();
-  const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
-  if (mins < 765) return 765 - mins;
-  return (1440 - mins) + 765; // next day
+  const mins = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+  return mins < 765 ? 765 - mins : (1440 - mins) + 765;
 }
 
-function formatWait(mins) {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+// ── PHONE VALIDATION ─────────────────────────────────────────────────────────
+function isRealPhone(phone) {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, '');
+  // Must be 10 digits (US) or 11 digits starting with 1
+  if (digits.length !== 10 && !(digits.length === 11 && digits[0] === '1')) return false;
+  // Skip 555 area code — AI-generated fake numbers
+  const areaCode = digits.length === 11 ? digits.substring(1, 4) : digits.substring(0, 3);
+  if (areaCode === '555') return false;
+  return true;
 }
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let sentToday = 0, skipped = 0, failed = 0, rateLimitHits = 0;
 let rateLimitRemaining = 100, dailyRemaining = 200000;
+const sentPhones = new Set();    // in-memory dedup by phone number
+const sentIds    = new Set();    // in-memory dedup by contact ID
 const failedContacts = [];
 
 // ── GHL HELPER ────────────────────────────────────────────────────────────────
@@ -114,7 +110,7 @@ async function ghlRequest(method, endpoint, body = null, retries = 0) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function log(msg) { console.log(`[${new Date().toISOString().substring(11,19)}] ${msg}`); }
+function log(msg)  { console.log(`[${new Date().toISOString().substring(11,19)}] ${msg}`); }
 
 // ── FETCH CONTACTS ────────────────────────────────────────────────────────────
 async function fetchAllContacts(tag) {
@@ -128,7 +124,7 @@ async function fetchAllContacts(tag) {
     const data = await ghlRequest('GET', url);
     const batch = data.contacts || [];
     contacts.push(...batch);
-    log(`  Page ${page}: ${batch.length} contacts (total: ${contacts.length})`);
+    log(`  Page ${page}: ${batch.length} (total: ${contacts.length})`);
     if (!data.meta?.nextPage || batch.length < 100) break;
     startAfter   = data.meta.startAfter;
     startAfterId = data.meta.startAfterId;
@@ -139,13 +135,39 @@ async function fetchAllContacts(tag) {
   return contacts;
 }
 
+// ── PRE-SEND DEDUP CHECK ─────────────────────────────────────────────────────
+// Re-fetch contact right before sending to confirm sms-sent tag not present
+async function alreadySent(contactId) {
+  try {
+    const data = await ghlRequest('GET', `/contacts/${contactId}`);
+    const tags = data.contact?.tags || [];
+    return tags.includes('sms-sent') || tags.includes('sms-blast-2026-06-22');
+  } catch(e) {
+    return false; // if check fails, allow send
+  }
+}
+
 // ── SEND ONE SMS ──────────────────────────────────────────────────────────────
 async function sendSMS(contact) {
   const firstName = contact.firstNameRaw || contact.firstName || 'there';
   const message   = SMS_MESSAGE(firstName);
 
   if (DRY_RUN) {
-    log(`[DRY RUN] → ${firstName} (${contact.companyName || ''}) ${contact.phone}`);
+    log(`[DRY RUN] → ${firstName} · ${contact.companyName} · ${contact.phone}`);
+    return;
+  }
+
+  // Pre-send live dedup check
+  if (await alreadySent(contact.id)) {
+    log(`⏭  Skipping ${firstName} — sms-sent tag already present (live check)`);
+    skipped++;
+    return;
+  }
+
+  // In-memory phone dedup — catches same number on multiple contacts
+  if (sentPhones.has(contact.phone)) {
+    log(`⏭  Skipping ${firstName} — phone ${contact.phone} already sent this run`);
+    skipped++;
     return;
   }
 
@@ -157,53 +179,67 @@ async function sendSMS(contact) {
     message
   });
 
+  // Tag immediately after send
   await ghlRequest('POST', `/contacts/${contact.id}/tags`, {
     tags: ['sms-sent', 'sms-blast-2026-06-22']
   });
+
+  // Add to in-memory sets
+  sentPhones.add(contact.phone);
+  sentIds.add(contact.id);
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 async function main() {
   if (!GHL_API_KEY) {
-    console.error('❌ GHL_API_KEY not set — check Railway env vars');
+    console.error('❌ GHL_API_KEY not set');
     process.exit(1);
   }
 
   console.log('\n' + '═'.repeat(60));
   console.log('  SubDraw SMS Blast');
-  console.log(`  Mode:      ${DRY_RUN ? '🔍 DRY RUN' : '🚀 LIVE SEND'}`);
-  console.log(`  Tag:       ${TAG_FILTER}`);
-  console.log(`  Cap:       ${SMS_DAILY_CAP}`);
-  console.log(`  From:      ${FROM_NUMBER}`);
-  console.log(`  Window:    6:45am–5pm Pacific/Mountain Mon–Fri only`);
+  console.log(`  Mode:   ${DRY_RUN ? '🔍 DRY RUN' : '🚀 LIVE SEND'}`);
+  console.log(`  Tag:    ${TAG_FILTER}`);
+  console.log(`  Cap:    ${SMS_DAILY_CAP}`);
+  console.log(`  From:   ${FROM_NUMBER}`);
+  console.log(`  Window: 6:45am–5pm Pacific/Mountain Mon–Fri only`);
   console.log('═'.repeat(60) + '\n');
 
-  // ── SEND WINDOW GATE ─────────────────────────────────────────────────────
+  // Time window gate
   if (!DRY_RUN && !isWithinSendWindow()) {
     const wait = minutesUntilWindow();
-    log(`🚫 OUTSIDE SEND WINDOW — it is ${new Date().toUTCString()}`);
-    log(`   GCs are sleeping. Will not send.`);
-    log(`   Window opens in ${formatWait(wait)} (6:45am Mountain Time).`);
-    log(`   Redeploy after 6:45am local time to send.`);
+    const h = Math.floor(wait / 60), m = wait % 60;
+    log(`🚫 OUTSIDE SEND WINDOW — GCs are sleeping. Will not send.`);
+    log(`   Window opens in ${h}h ${m}m (6:45am Mountain Time).`);
+    log(`   Redeploy after 6:45am local time.`);
     process.exit(0);
   }
 
   if (!DRY_RUN) {
-    log('✅ Within send window — starting in 5 seconds (Ctrl+C to abort)...');
+    log('✅ Within send window — starting in 5s (Ctrl+C to abort)...');
     await sleep(5000);
   }
 
-  // Fetch and filter
   const all = await fetchAllContacts(TAG_FILTER);
+
   const SKIP_TAGS = ['sms-sent', 'unsubscribed', 'sms-unsubscribed', 'do-not-contact'];
+  let fakeNumbers = 0;
+
   const eligible = all.filter(c => {
-    if (!c.phone) { skipped++; return false; }
-    if (c.dnd)    { skipped++; return false; }
+    // Skip bad/fake phone numbers
+    if (!isRealPhone(c.phone)) {
+      fakeNumbers++;
+      skipped++;
+      return false;
+    }
+    if (c.dnd) { skipped++; return false; }
+    // Skip if already tagged
     if (SKIP_TAGS.some(t => (c.tags || []).includes(t))) { skipped++; return false; }
     return true;
   }).slice(0, LIMIT);
 
-  log(`\n📱 Eligible: ${eligible.length} (skipped ${skipped} ineligible)`);
+  log(`\n📱 Eligible: ${eligible.length}`);
+  log(`   Skipped:  ${skipped} (${fakeNumbers} fake/555 numbers, rest already sent or DND)`);
   log(`   Sending up to: ${Math.min(eligible.length, SMS_DAILY_CAP)}\n`);
 
   for (let i = 0; i < eligible.length; i++) {
@@ -212,7 +248,7 @@ async function main() {
       break;
     }
 
-    // Re-check window on every 50th send
+    // Recheck window every 50 sends
     if (!DRY_RUN && i > 0 && i % 50 === 0 && !isWithinSendWindow()) {
       log(`🚫 Send window closed — stopping. Resume tomorrow 6:45am.`);
       break;
@@ -226,30 +262,34 @@ async function main() {
     const c = eligible[i];
     try {
       await sendSMS(c);
-      sentToday++;
-      log(`✅ [${sentToday}/${Math.min(eligible.length, SMS_DAILY_CAP)}] ${c.firstNameRaw || c.firstName} · ${c.companyName} · ${c.phone}`);
+      if (!DRY_RUN && !sentIds.has(c.id)) {
+        // sendSMS already incremented skipped if deduped
+      } else if (DRY_RUN || sentIds.has(c.id)) {
+        sentToday++;
+        log(`✅ [${sentToday}/${Math.min(eligible.length, SMS_DAILY_CAP)}] ${c.firstNameRaw || c.firstName} · ${c.companyName} · ${c.phone}`);
+      }
     } catch(e) {
       failed++;
-      failedContacts.push({ name: c.firstNameRaw, company: c.companyName, error: e.message });
-      log(`❌ FAILED: ${c.firstNameRaw} · ${c.companyName} — ${e.message}`);
+      failedContacts.push({ name: c.firstNameRaw, company: c.companyName, phone: c.phone, error: e.message });
+      log(`❌ FAILED: ${c.firstNameRaw} · ${c.companyName} · ${c.phone} — ${e.message}`);
     }
 
     if (sentToday > 0 && sentToday % 25 === 0) {
-      log(`📊 Stats: sent=${sentToday} skipped=${skipped} failed=${failed} rateHits=${rateLimitHits} API-remaining=${rateLimitRemaining}`);
+      log(`📊 sent=${sentToday} skipped=${skipped} failed=${failed} rateHits=${rateLimitHits} API-remaining=${rateLimitRemaining}`);
     }
 
     await sleep(DELAY_BETWEEN_MS);
   }
 
-  // Final report
   console.log('\n' + '═'.repeat(60));
-  log(`✅ Sent:    ${sentToday}`);
-  log(`⏭  Skipped: ${skipped}`);
-  log(`❌ Failed:  ${failed}`);
-  if (DRY_RUN) log('\n⚠️  DRY RUN — no SMS sent. Use --send to go live after 6:45am.');
+  log(`✅ Sent:         ${sentToday}`);
+  log(`⏭  Skipped:      ${skipped} (incl. ${fakeNumbers} fake numbers)`);
+  log(`❌ Failed:       ${failed}`);
+  log(`🔁 Rate hits:    ${rateLimitHits}`);
+  if (DRY_RUN) log('\n⚠️  DRY RUN — no SMS sent. Use --send after 6:45am.');
   if (failedContacts.length) {
-    log('\nFailed:');
-    failedContacts.forEach(f => log(`  ${f.name} (${f.company}) — ${f.error}`));
+    log('\nFailed contacts:');
+    failedContacts.forEach(f => log(`  ${f.name} (${f.company}) ${f.phone} — ${f.error}`));
   }
   console.log('═'.repeat(60) + '\n');
 }
