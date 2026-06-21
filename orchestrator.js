@@ -37,6 +37,7 @@ const intervals = {
   health_monitor:      30 * 60 * 1000,      // 30 min
   revenue_monitor:     2 * 60 * 60 * 1000,  // 2 hr
   demo_tracker:        6 * 60 * 60 * 1000,  // 6 hr
+  sms_agent:           2 * 60 * 60 * 1000,  // 2 hr
 };
 
 function shouldRun(key) {
@@ -151,12 +152,25 @@ async function tick() {
     });
   }
 
-  // ── Every 2 hr: Revenue monitor ──────────────────────────────────────────
+  // ── Every 2 hr: Revenue monitor + Instantly→GHL stage sync ────────────────
   if (shouldRun('revenue_monitor')) {
     markRun('revenue_monitor');
     runJob('Revenue Monitor', async () => {
       const { monitorRevenue } = require('./agents/14-revenue-monitor');
       await monitorRevenue();
+    });
+    runJob('Instantly→GHL Stage Sync', async () => {
+      const { syncInstantlyToGHL } = require('./agents/09-crm-logger');
+      await syncInstantlyToGHL();
+    });
+  }
+
+  // ── Every 2 hr: Agent 15 high-intent SMS trigger ───────────────────────────
+  if (shouldRun('sms_agent')) {
+    markRun('sms_agent');
+    runJob('High-Intent SMS Agent (15)', async () => {
+      const { runSMSAgent } = require('./agents/15-sms-agent');
+      await runSMSAgent();
     });
   }
 
@@ -212,7 +226,21 @@ async function tick() {
       await logToGHL(launched);
 
       console.log(`[FullPipeline] Done — raw:${raw.length} → launched:${launched.length}`);
+
+      // Load upcoming state contacts daily (TX now, FL/AZ when closer to launch)
+      const { loadUpcomingStateContacts } = require('./agents/29-geographic-expansion-scout');
+      await loadUpcomingStateContacts();
       logRun('full-pipeline', { raw: raw.length, screened: screened.length, launched: launched.length });
+    });
+  }
+
+  // ── Daily 7am: GHL contact enrichment (find missing emails via Apollo) ────
+  if (isHour(7) && !lastRun['ghl_enrichment_' + now.toDateString()]) {
+    lastRun['ghl_enrichment_' + now.toDateString()] = Date.now();
+    runJob('GHL Contact Enrichment', async () => {
+      const { enrichGHLContacts } = require('./agents/33-lead-enrichment');
+      const result = await enrichGHLContacts();
+      console.log(`[GHL Enrichment] Found ${result.found} emails from ${result.enriched} contacts`);
     });
   }
 
@@ -250,12 +278,15 @@ async function tick() {
   if (isDayOfWeek(0) && isHour(0) && !lastRun['weekly_' + now.toDateString()]) {
     lastRun['weekly_' + now.toDateString()] = Date.now();
     runJob('Weekly Analyzer', async () => {
-      const { analyzePerformance } = require('./agents/20-ab-performance-analyzer');
-      const { runDormantRecovery } = require('./agents/35-dormant-pipeline-recovery');
-      const { analyzeMarketTrends } = require('./agents/37-market-trend-scanner');
+      const { analyzePerformance }       = require('./agents/20-ab-performance-analyzer');
+      const { runDormantRecovery }       = require('./agents/35-dormant-pipeline-recovery');
+      const { analyzeMarketTrends }      = require('./agents/37-market-trend-scanner');
+      const { scoutExpansion, loadUpcomingStateContacts } = require('./agents/29-geographic-expansion-scout');
       await analyzePerformance();
       await runDormantRecovery();
       await analyzeMarketTrends();
+      await scoutExpansion();
+      await loadUpcomingStateContacts();
     });
   }
 }
