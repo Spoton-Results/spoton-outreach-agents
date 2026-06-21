@@ -37,8 +37,24 @@ async function classifyReplies() {
 
   try {
     const campaignId = process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly.campaign_id;
-    const repliesData = await callInstantly('GET', '/unibox/emails?campaign_id=' + campaignId + '&limit=50');
-    const replies = repliesData.emails || [];
+
+    // Use v2 API (same key as lead creation which is confirmed working)
+    const fetch = (await import('node-fetch')).default;
+    const res = await fetch(`https://api.instantly.ai/api/v2/emails?campaign_id=${campaignId}&limit=50&reply_to_uuid=*`, {
+      headers: {
+        'Authorization': 'Bearer ' + process.env.INSTANTLY_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error('Instantly error: ' + res.status + ' ' + errText.substring(0, 200));
+    }
+
+    const repliesData = await res.json();
+    const replies = (repliesData.items || repliesData.emails || []).filter(e => e.reply_to_uuid || e.is_reply);
 
     if (!replies.length) {
       console.log('[Agent 10] No new replies');
