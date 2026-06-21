@@ -58,8 +58,8 @@ Return: { "subject": "...", "body": "..." }`;
       html: '<p>' + email.body.replace(/\n/g, '<br>') + '</p>'
     });
     // Tag as followed up so we don't double-send
-    await callGHL('PUT', '/contacts/' + contact.id, {
-      tags: [...(contact.tags || []), 'demo-followup-sent']
+    await callGHL('POST', '/contacts/' + contact.id + '/tags', {
+      tags: ['demo-followup-sent']
     });
     logRun('16-demo-engagement-tracker', { followed_up: contact.email });
   } catch(e) {

@@ -7,13 +7,26 @@
  */
 require('dotenv').config({ path: './config/.env' });
 const { callGHL, logRun, notifyDashboard } = require('../utils/helpers');
+const icp = require('../config/icp.json');
+
+// Campaign IDs read at runtime (not module load) so env vars are always current
+function getCampaignId(stateCode) {
+  const map = {
+    CA: process.env.INSTANTLY_CA_CAMPAIGN_ID || process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly?.campaign_id,
+    UT: process.env.INSTANTLY_UT_CAMPAIGN_ID || process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly?.campaign_id,
+    TX: process.env.INSTANTLY_TX_CAMPAIGN_ID,
+    FL: process.env.INSTANTLY_FL_CAMPAIGN_ID,
+    AZ: process.env.INSTANTLY_AZ_CAMPAIGN_ID,
+  };
+  return map[stateCode] || null;
+}
 
 const STATES = [
-  { state: 'California', code: 'CA', cities: ['Los Angeles','San Diego','San Jose','San Francisco','Sacramento','Fresno','Long Beach','Oakland','Anaheim','Riverside','Stockton','Irvine','Modesto','Bakersfield'], campaign: process.env.INSTANTLY_CA_CAMPAIGN_ID || process.env.INSTANTLY_CAMPAIGN_ID },
-  { state: 'Utah', code: 'UT', cities: ['Salt Lake City','Provo','Ogden','St George','Lehi','Sandy','Orem','West Jordan','Murray','Draper'], campaign: process.env.INSTANTLY_UT_CAMPAIGN_ID },
-  { state: 'Texas', code: 'TX', cities: ['Houston','Dallas','Austin','San Antonio','Fort Worth','Arlington','Plano','Lubbock','El Paso','Corpus Christi'], campaign: process.env.INSTANTLY_TX_CAMPAIGN_ID },
-  { state: 'Florida', code: 'FL', cities: ['Miami','Orlando','Tampa','Jacksonville','Fort Lauderdale','St Petersburg','Cape Coral','Tallahassee','Hialeah','Port St Lucie'], campaign: process.env.INSTANTLY_FL_CAMPAIGN_ID },
-  { state: 'Arizona', code: 'AZ', cities: ['Phoenix','Tucson','Mesa','Chandler','Scottsdale','Glendale','Gilbert','Tempe','Peoria','Surprise'], campaign: process.env.INSTANTLY_AZ_CAMPAIGN_ID },
+  { state: 'California', code: 'CA', cities: ['Los Angeles','San Diego','San Jose','San Francisco','Sacramento','Fresno','Long Beach','Oakland','Anaheim','Riverside','Stockton','Irvine','Modesto','Bakersfield'] },
+  { state: 'Utah',       code: 'UT', cities: ['Salt Lake City','Provo','Ogden','St George','Lehi','Sandy','Orem','West Jordan','Murray','Draper'] },
+  { state: 'Texas',      code: 'TX', cities: ['Houston','Dallas','Austin','San Antonio','Fort Worth','Arlington','Plano','Lubbock','El Paso','Corpus Christi'] },
+  { state: 'Florida',    code: 'FL', cities: ['Miami','Orlando','Tampa','Jacksonville','Fort Lauderdale','St Petersburg','Cape Coral','Tallahassee','Hialeah','Port St Lucie'] },
+  { state: 'Arizona',    code: 'AZ', cities: ['Phoenix','Tucson','Mesa','Chandler','Scottsdale','Glendale','Gilbert','Tempe','Peoria','Surprise'] },
 ];
 
 const SEARCH_TEMPLATES = [
@@ -178,9 +191,9 @@ async function pushToInstantly(contact, campaignId) {
 
 async function findProspects(options = {}) {
   // Pick current state
-  const activeStates = STATES.filter(s => s.campaign);
+  const activeStates = STATES.filter(s => getCampaignId(s.code));
   if (!activeStates.length) {
-    console.log('[Agent 01] No campaigns configured');
+    console.log('[Agent 01] No campaigns configured — check INSTANTLY_CAMPAIGN_ID env var');
     return [];
   }
 
@@ -191,6 +204,8 @@ async function findProspects(options = {}) {
   if (!cityIndexes[target.state]) cityIndexes[target.state] = 0;
   const city = target.cities[cityIndexes[target.state] % target.cities.length];
   cityIndexes[target.state]++;
+
+  const campaignId = getCampaignId(target.code);
 
   // Pick search template
   const template = SEARCH_TEMPLATES[Math.floor(Math.random() * SEARCH_TEMPLATES.length)];
@@ -230,7 +245,7 @@ async function findProspects(options = {}) {
     try {
       const id = await pushToGHL(contact, target.code);
       if (id) {
-        await pushToInstantly(contact, target.campaign);
+        await pushToInstantly(contact, campaignId);
         pushed++;
         console.log(`[Agent 01] ✓ ${contact.organization_name} — ${contact.email || 'no email'}`);
       }

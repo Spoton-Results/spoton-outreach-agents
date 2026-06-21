@@ -37,7 +37,7 @@ async function classifyReplies() {
 
   try {
     const campaignId = process.env.INSTANTLY_CAMPAIGN_ID || icp.instantly.campaign_id;
-    const repliesData = await callInstantly('GET', '/email/list?campaign_id=' + campaignId + '&limit=50&reply=true');
+    const repliesData = await callInstantly('GET', '/unibox/emails?campaign_id=' + campaignId + '&limit=50');
     const replies = repliesData.emails || [];
 
     if (!replies.length) {
