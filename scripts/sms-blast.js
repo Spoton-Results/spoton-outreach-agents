@@ -1,75 +1,88 @@
 /**
- * SubDraw SMS Blast — Smart Queue Sender
- * 
- * Sends to all gc-prospect contacts with phones.
- * Respects GHL rate limits, SMS daily cap, retries on 429/5xx.
- * Tags each contact sms-sent after success.
- * Skips DND, unsubscribed, already sent.
- * Logs every send/skip/fail to console for Railway visibility.
- * 
+ * SubDraw SMS Blast — Smart Queue Sender with Send Window
+ *
+ * ONLY sends between 6:45am–5pm local time, Mon–Fri.
+ * Hard stops outside that window — will not text GCs at 3am.
+ *
  * Usage:
- *   node scripts/sms-blast.js                    # dry run (default)
- *   node scripts/sms-blast.js --send             # live send
- *   node scripts/sms-blast.js --send --limit=100 # send first 100 only
- *   node scripts/sms-blast.js --send --tag=ca-gc # CA only
- *   node scripts/sms-blast.js --send --tag=ut-gc # UT only
+ *   node scripts/sms-blast.js              # dry run
+ *   node scripts/sms-blast.js --send       # live send (respects time window)
+ *   node scripts/sms-blast.js --send --tag=ca-gc
+ *   node scripts/sms-blast.js --send --tag=ut-gc
+ *   node scripts/sms-blast.js --send --limit=50
  */
 
-// Railway injects env vars directly — dotenv is only needed for local dev
+// Railway injects env vars directly — dotenv only for local dev
 try { require('dotenv').config({ path: './config/.env' }); } catch(e) {}
 
-// Immediate startup confirmation — visible in Railway logs even on fast exit
 console.log('[SMS-BLAST] Script starting — GHL_API_KEY present:', !!process.env.GHL_API_KEY);
 
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
-// ── CONFIG ──────────────────────────────────────────────────────────────────
-const GHL_API_KEY   = process.env.GHL_API_KEY;
-const GHL_LOCATION  = process.env.GHL_LOCATION_ID || 'oe1TpmlDynQGFNdYLkaK';
-const FROM_NUMBER   = '+14352911877';
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+const GHL_API_KEY  = process.env.GHL_API_KEY;
+const GHL_LOCATION = process.env.GHL_LOCATION_ID || 'oe1TpmlDynQGFNdYLkaK';
+const FROM_NUMBER  = '+14352911877';
 
-const SMS_MESSAGE   = (firstName) =>
+const SMS_MESSAGE = (firstName) =>
   `Hey ${firstName || 'there'}, quick question — are your subs billing you accurately on every draw? Most GCs lose $8-15K per job without knowing it. Check it free: subdraw.com/login –Shawn`;
 
 // Safety limits
-const SMS_DAILY_CAP       = 1700; // hard stop — covers all 1,627 with buffer (account limit: 20,000/day)
-const API_CALLS_PER_10S   = 80;   // under 100/10s limit
-const DELAY_BETWEEN_MS    = 1200; // ~50/min — smooth carrier throughput
-const MAX_RETRIES         = 3;
-const RETRY_BACKOFF_MS    = 3000;
+const SMS_DAILY_CAP     = 1700;  // covers all 1,627 with buffer (account limit: 20K/day)
+const DELAY_BETWEEN_MS  = 1200;  // 1.2s between sends (~50/min)
+const MAX_RETRIES       = 3;
+const RETRY_BACKOFF_MS  = 3000;
 
-// Parse CLI args
-const args = process.argv.slice(2);
-const DRY_RUN  = !args.includes('--send');
+// CLI args
+const args       = process.argv.slice(2);
+const DRY_RUN    = !args.includes('--send');
 const TAG_FILTER = (args.find(a => a.startsWith('--tag=')) || '').replace('--tag=', '') || 'gc-prospect';
-const LIMIT    = parseInt((args.find(a => a.startsWith('--limit=')) || '').replace('--limit=', '') || '99999');
+const LIMIT      = parseInt((args.find(a => a.startsWith('--limit=')) || '').replace('--limit=', '') || '99999');
 
-// ── STATE ────────────────────────────────────────────────────────────────────
-let sentToday    = 0;
-let skipped      = 0;
-let failed       = 0;
-let rateLimitHits = 0;
+// ── SEND WINDOW ──────────────────────────────────────────────────────────────
+// CA contacts: 6:45am–5pm Pacific (UTC-7 summer = UTC 13:45–00:00)
+// UT contacts: 6:45am–5pm Mountain (UTC-6 summer = UTC 12:45–23:00)
+// Use Mountain start (12:45 UTC) and Pacific end (23:59 UTC) as the safe window
+// This ensures NO texts go out before 6:45am local for either state
+
+function isWithinSendWindow() {
+  const now    = new Date();
+  const day    = now.getUTCDay();   // 0=Sun 6=Sat
+  const mins   = now.getUTCHours() * 60 + now.getUTCMinutes();
+  if (day === 0 || day === 6) return false; // no weekends
+  return mins >= 765 && mins <= 1439; // 12:45 UTC to 23:59 UTC
+}
+
+function minutesUntilWindow() {
+  const now  = new Date();
+  const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  if (mins < 765) return 765 - mins;
+  return (1440 - mins) + 765; // next day
+}
+
+function formatWait(mins) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let sentToday = 0, skipped = 0, failed = 0, rateLimitHits = 0;
+let rateLimitRemaining = 100, dailyRemaining = 200000;
 const failedContacts = [];
 
-// ── GHL HELPER ───────────────────────────────────────────────────────────────
-let rateLimitRemaining = 100;
-let dailyRemaining     = 200000;
-
+// ── GHL HELPER ────────────────────────────────────────────────────────────────
 async function ghlRequest(method, endpoint, body = null, retries = 0) {
-  const url = `https://services.leadconnectorhq.com${endpoint}`;
-  const opts = {
+  const res = await fetch(`https://services.leadconnectorhq.com${endpoint}`, {
     method,
     headers: {
       'Authorization': `Bearer ${GHL_API_KEY}`,
       'Content-Type': 'application/json',
       'Version': '2021-07-28'
-    }
-  };
-  if (body) opts.body = JSON.stringify(body);
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
 
-  const res = await fetch(url, opts);
-
-  // Read rate limit headers
   const rl = res.headers.get('X-RateLimit-Remaining');
   const dl = res.headers.get('X-RateLimit-Daily-Remaining');
   if (rl) rateLimitRemaining = parseInt(rl);
@@ -77,16 +90,15 @@ async function ghlRequest(method, endpoint, body = null, retries = 0) {
 
   if (res.status === 429) {
     rateLimitHits++;
-    const retryAfter = parseInt(res.headers.get('Retry-After') || '10');
-    log(`⚠️  Rate limited — waiting ${retryAfter}s (hit #${rateLimitHits})`);
-    await sleep(retryAfter * 1000);
+    const wait = parseInt(res.headers.get('Retry-After') || '10');
+    log(`⚠️  Rate limited — waiting ${wait}s`);
+    await sleep(wait * 1000);
     if (retries < MAX_RETRIES) return ghlRequest(method, endpoint, body, retries + 1);
     throw new Error('Rate limit retries exhausted');
   }
 
   if (res.status >= 500) {
     if (retries < MAX_RETRIES) {
-      log(`⚠️  Server error ${res.status} — retry ${retries + 1}/${MAX_RETRIES}`);
       await sleep(RETRY_BACKOFF_MS * (retries + 1));
       return ghlRequest(method, endpoint, body, retries + 1);
     }
@@ -101,176 +113,145 @@ async function ghlRequest(method, endpoint, body = null, retries = 0) {
   return res.json();
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function log(msg) { console.log(`[${new Date().toISOString().substring(11,19)}] ${msg}`); }
 
-function log(msg) {
-  const ts = new Date().toISOString().substring(11, 19);
-  console.log(`[${ts}] ${msg}`);
-}
-
-function logStats() {
-  log(`📊 Stats: sent=${sentToday} skipped=${skipped} failed=${failed} rateLimitHits=${rateLimitHits} API-remaining=${rateLimitRemaining} daily-remaining=${dailyRemaining}`);
-}
-
-// ── FETCH ALL CONTACTS BY TAG ─────────────────────────────────────────────────
+// ── FETCH CONTACTS ────────────────────────────────────────────────────────────
 async function fetchAllContacts(tag) {
   const contacts = [];
-  let startAfter = null;
-  let startAfterId = null;
-  let page = 1;
-
-  log(`📋 Fetching all contacts with tag: ${tag}`);
-
+  let startAfter = null, startAfterId = null, page = 1;
+  log(`📋 Fetching contacts with tag: ${tag}`);
   while (true) {
     let url = `/contacts/?locationId=${GHL_LOCATION}&query=${encodeURIComponent(tag)}&limit=100`;
     if (startAfter)   url += `&startAfter=${startAfter}`;
     if (startAfterId) url += `&startAfterId=${startAfterId}`;
-
     const data = await ghlRequest('GET', url);
     const batch = data.contacts || [];
     contacts.push(...batch);
-
-    log(`  Page ${page}: ${batch.length} contacts (total so far: ${contacts.length} / ${data.meta?.total || '?'})`);
-
+    log(`  Page ${page}: ${batch.length} contacts (total: ${contacts.length})`);
     if (!data.meta?.nextPage || batch.length < 100) break;
     startAfter   = data.meta.startAfter;
     startAfterId = data.meta.startAfterId;
     page++;
-    await sleep(500); // be gentle on pagination
+    await sleep(500);
   }
-
-  log(`✅ Fetched ${contacts.length} total contacts`);
+  log(`✅ Fetched ${contacts.length} total`);
   return contacts;
 }
 
-// ── SEND SMS TO ONE CONTACT ───────────────────────────────────────────────────
+// ── SEND ONE SMS ──────────────────────────────────────────────────────────────
 async function sendSMS(contact) {
   const firstName = contact.firstNameRaw || contact.firstName || 'there';
-  const phone     = contact.phone;
   const message   = SMS_MESSAGE(firstName);
 
   if (DRY_RUN) {
-    log(`[DRY RUN] → ${firstName} (${contact.companyName || ''}) ${phone} — "${message.substring(0, 60)}..."`);
-    return true;
+    log(`[DRY RUN] → ${firstName} (${contact.companyName || ''}) ${contact.phone}`);
+    return;
   }
 
-  // Send via GHL conversations API
   await ghlRequest('POST', '/conversations/messages', {
     type: 'SMS',
     contactId: contact.id,
     fromNumber: FROM_NUMBER,
-    toNumber: phone,
+    toNumber: contact.phone,
     message
   });
 
-  // Tag as sms-sent so we never double-send
   await ghlRequest('POST', `/contacts/${contact.id}/tags`, {
     tags: ['sms-sent', 'sms-blast-2026-06-22']
   });
-
-  return true;
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 async function main() {
   if (!GHL_API_KEY) {
-    console.error('❌ GHL_API_KEY not set');
+    console.error('❌ GHL_API_KEY not set — check Railway env vars');
     process.exit(1);
   }
 
   console.log('\n' + '═'.repeat(60));
   console.log('  SubDraw SMS Blast');
-  console.log(`  Mode: ${DRY_RUN ? '🔍 DRY RUN (no SMS sent)' : '🚀 LIVE SEND'}`);
-  console.log(`  Tag filter: ${TAG_FILTER}`);
-  console.log(`  Daily cap: ${SMS_DAILY_CAP}`);
-  console.log(`  Limit: ${LIMIT}`);
-  console.log(`  From: ${FROM_NUMBER}`);
+  console.log(`  Mode:      ${DRY_RUN ? '🔍 DRY RUN' : '🚀 LIVE SEND'}`);
+  console.log(`  Tag:       ${TAG_FILTER}`);
+  console.log(`  Cap:       ${SMS_DAILY_CAP}`);
+  console.log(`  From:      ${FROM_NUMBER}`);
+  console.log(`  Window:    6:45am–5pm Pacific/Mountain Mon–Fri only`);
   console.log('═'.repeat(60) + '\n');
 
+  // ── SEND WINDOW GATE ─────────────────────────────────────────────────────
+  if (!DRY_RUN && !isWithinSendWindow()) {
+    const wait = minutesUntilWindow();
+    log(`🚫 OUTSIDE SEND WINDOW — it is ${new Date().toUTCString()}`);
+    log(`   GCs are sleeping. Will not send.`);
+    log(`   Window opens in ${formatWait(wait)} (6:45am Mountain Time).`);
+    log(`   Redeploy after 6:45am local time to send.`);
+    process.exit(0);
+  }
+
   if (!DRY_RUN) {
-    log('⏳ Starting in 5 seconds — Ctrl+C to abort...');
+    log('✅ Within send window — starting in 5 seconds (Ctrl+C to abort)...');
     await sleep(5000);
   }
 
-  // Fetch all contacts
+  // Fetch and filter
   const all = await fetchAllContacts(TAG_FILTER);
-
-  // Filter eligible contacts
   const SKIP_TAGS = ['sms-sent', 'unsubscribed', 'sms-unsubscribed', 'do-not-contact'];
   const eligible = all.filter(c => {
     if (!c.phone) { skipped++; return false; }
     if (c.dnd)    { skipped++; return false; }
-    const tags = c.tags || [];
-    if (SKIP_TAGS.some(t => tags.includes(t))) { skipped++; return false; }
+    if (SKIP_TAGS.some(t => (c.tags || []).includes(t))) { skipped++; return false; }
     return true;
   }).slice(0, LIMIT);
 
-  log(`\n📱 Eligible to receive SMS: ${eligible.length} (skipped ${skipped} ineligible)`);
-  log(`   Will send up to: ${Math.min(eligible.length, SMS_DAILY_CAP)} today (cap: ${SMS_DAILY_CAP})\n`);
+  log(`\n📱 Eligible: ${eligible.length} (skipped ${skipped} ineligible)`);
+  log(`   Sending up to: ${Math.min(eligible.length, SMS_DAILY_CAP)}\n`);
 
-  if (!DRY_RUN && eligible.length === 0) {
-    log('Nothing to send. Exiting.');
-    return;
-  }
-
-  // Send loop
   for (let i = 0; i < eligible.length; i++) {
-    const contact = eligible[i];
-
-    // Hard stop at daily SMS cap
     if (sentToday >= SMS_DAILY_CAP) {
-      log(`\n🛑 Daily SMS cap hit (${SMS_DAILY_CAP}). Stopping.`);
-      log(`   Remaining contacts will be sent tomorrow after ramp unlocks.`);
-      log(`   Resume with: node scripts/sms-blast.js --send --tag=${TAG_FILTER}`);
+      log(`🛑 Daily cap hit (${SMS_DAILY_CAP}). Done.`);
       break;
     }
 
-    // Throttle if API rate limit is getting low
+    // Re-check window on every 50th send
+    if (!DRY_RUN && i > 0 && i % 50 === 0 && !isWithinSendWindow()) {
+      log(`🚫 Send window closed — stopping. Resume tomorrow 6:45am.`);
+      break;
+    }
+
     if (rateLimitRemaining < 20) {
-      log(`⏸  API rate limit low (${rateLimitRemaining} remaining) — pausing 12s`);
+      log(`⏸  Rate limit low (${rateLimitRemaining}) — pausing 12s`);
       await sleep(12000);
     }
 
-    const name = contact.firstNameRaw || contact.firstName || 'unknown';
-    const company = contact.companyName || '';
-
+    const c = eligible[i];
     try {
-      await sendSMS(contact);
+      await sendSMS(c);
       sentToday++;
-      log(`✅ [${sentToday}/${Math.min(eligible.length, SMS_DAILY_CAP)}] ${name} · ${company} · ${contact.phone}`);
-    } catch (e) {
+      log(`✅ [${sentToday}/${Math.min(eligible.length, SMS_DAILY_CAP)}] ${c.firstNameRaw || c.firstName} · ${c.companyName} · ${c.phone}`);
+    } catch(e) {
       failed++;
-      failedContacts.push({ id: contact.id, name, company, error: e.message });
-      log(`❌ FAILED: ${name} · ${company} — ${e.message}`);
+      failedContacts.push({ name: c.firstNameRaw, company: c.companyName, error: e.message });
+      log(`❌ FAILED: ${c.firstNameRaw} · ${c.companyName} — ${e.message}`);
     }
 
-    // Log stats every 25 sends
     if (sentToday > 0 && sentToday % 25 === 0) {
-      logStats();
+      log(`📊 Stats: sent=${sentToday} skipped=${skipped} failed=${failed} rateHits=${rateLimitHits} API-remaining=${rateLimitRemaining}`);
     }
 
-    // Delay between sends
     await sleep(DELAY_BETWEEN_MS);
   }
 
   // Final report
   console.log('\n' + '═'.repeat(60));
-  console.log('  BLAST COMPLETE');
-  console.log('═'.repeat(60));
   log(`✅ Sent:    ${sentToday}`);
   log(`⏭  Skipped: ${skipped}`);
   log(`❌ Failed:  ${failed}`);
-  log(`🔁 Rate limit hits: ${rateLimitHits}`);
-  if (DRY_RUN) log('\n⚠️  DRY RUN — no SMS were actually sent. Run with --send to go live.');
+  if (DRY_RUN) log('\n⚠️  DRY RUN — no SMS sent. Use --send to go live after 6:45am.');
   if (failedContacts.length) {
-    log('\nFailed contacts:');
+    log('\nFailed:');
     failedContacts.forEach(f => log(`  ${f.name} (${f.company}) — ${f.error}`));
   }
   console.log('═'.repeat(60) + '\n');
 }
 
-main().catch(e => {
-  console.error('Fatal error:', e);
-  process.exit(1);
-});
+main().catch(e => { console.error('Fatal:', e); process.exit(1); });
