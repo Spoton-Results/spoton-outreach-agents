@@ -13,6 +13,12 @@
  *   Daily 5am    — Daily briefing SMS to founder
  *   Daily 6am    — Full prospector pipeline (Apollo/Vibe → full 9-agent flow)
  *   Sunday midnight — Weekly analyzer (A/B winners, re-engagement)
+ *
+ * SMS Campaign Schedule (data-driven, construction-specific):
+ *   Tue/Wed/Thu 10:00am Mountain — Morning send (pre-job-site window)
+ *   Tue/Wed/Thu 12:15pm Mountain — Lunch send (peak reply window)
+ *   Research: construction pros respond best Mon-Wed, reply rates peak at noon
+ *   Skips: contacts already tagged sms-sent, 555 numbers, DND, weekends
  */
 require('dotenv').config({ path: './config/.env' });
 const { logRun } = require('./utils/helpers');
@@ -49,6 +55,54 @@ function isHour(h) {
 
 function isDayOfWeek(d) {
   return new Date().getDay() === d; // 0 = Sunday
+}
+
+// ── SMS CAMPAIGN LOGIC ───────────────────────────────────────────────────────
+// Research-backed windows for construction GC owners:
+// - Tue/Wed/Thu only (Mon planning chaos, Fri wind-down)
+// - 10:00am Mountain (in office before job site, peak B2B SMS window)
+// - 12:15pm Mountain (lunch break, highest reply rates for construction)
+// - Skip Mon/Fri, skip weekends entirely
+// Source: construction outreach data shows noon replies peak, 7-9am avoid (driving)
+
+function isSMSCampaignWindow() {
+  const now    = new Date();
+  const utcDay = now.getUTCDay();   // 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+  const utcH   = now.getUTCHours();
+  const utcM   = now.getUTCMinutes();
+
+  // Only Tue(2), Wed(3), Thu(4)
+  if (![2, 3, 4].includes(utcDay)) return null;
+
+  // Mountain Time = UTC-6 in summer
+  // 10:00am MT = 16:00 UTC
+  // 12:15pm MT = 18:15 UTC
+  const utcMins = utcH * 60 + utcM;
+
+  if (utcMins >= 960 && utcMins < 965)  return 'morning';  // 16:00-16:05 UTC = 10:00-10:05am MT
+  if (utcMins >= 1095 && utcMins < 1100) return 'lunch';   // 18:15-18:20 UTC = 12:15-12:20pm MT
+
+  return null;
+}
+
+async function runSMSCampaign(window) {
+  const { spawn } = require('child_process');
+  return new Promise((resolve) => {
+    console.log(`[SMS Campaign] Firing ${window} send window`);
+    const proc = spawn('node', ['scripts/sms-blast.js', '--send', '--tag=gc-prospect'], {
+      cwd: __dirname,
+      env: process.env,
+      stdio: 'inherit'
+    });
+    proc.on('close', (code) => {
+      console.log(`[SMS Campaign] ${window} send completed — exit code ${code}`);
+      resolve(code);
+    });
+    proc.on('error', (err) => {
+      console.error(`[SMS Campaign] Error spawning sms-blast: ${err.message}`);
+      resolve(1);
+    });
+  });
 }
 
 let runCount = 0;
@@ -178,6 +232,18 @@ async function tick() {
       const { findAndReengageColdLeads } = require('./agents/12-reengagement-tracker');
       await findAndReengageColdLeads();
     });
+  }
+
+  // ── Tue/Wed/Thu 10am + 12:15pm MT: SMS Campaign ─────────────────────────
+  const smsWindow = isSMSCampaignWindow();
+  if (smsWindow) {
+    const smsKey = 'sms_campaign_' + smsWindow + '_' + now.toDateString();
+    if (!lastRun[smsKey]) {
+      lastRun[smsKey] = Date.now();
+      runJob('SMS Campaign (' + smsWindow + ')', async () => {
+        await runSMSCampaign(smsWindow);
+      });
+    }
   }
 
   // ── Sunday midnight: Weekly analyzer ─────────────────────────────────────
