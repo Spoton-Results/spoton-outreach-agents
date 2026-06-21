@@ -20,7 +20,7 @@ async function findDemoVisitorsNoSignup() {
   // Flag contacts in GHL who have tag "demo-clicked" but not "customer"
   try {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
-    const contacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tags=demo-clicked&limit=50');
+    const contacts = await callGHL('GET', '/contacts/?locationId=' + locationId + '&tag=demo-clicked&limit=50');
     const demoVisitors = (contacts.contacts || []).filter(c =>
       !c.tags?.includes('customer') &&
       !c.tags?.includes('demo-followup-sent')

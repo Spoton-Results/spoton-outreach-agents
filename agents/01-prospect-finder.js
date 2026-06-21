@@ -45,57 +45,72 @@ let cityIndexes = {};
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function searchWithOpenAI(query) {
+async function searchWithClaude(query) {
   const fetch = (await import('node-fetch')).default;
-  
-  const response = await fetch('https://api.openai.com/v1/responses', {
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY,
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'web-search-2025-03-05',
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      tools: [{ type: 'web_search_preview' }],
-      input: `Search for general contractor businesses: ${query}
-      
-Extract every GC company you find. Return ONLY a JSON array:
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      messages: [{
+        role: 'user',
+        content: `Search for general contractor businesses: ${query}
+
+Find real GC companies with owner contact information.
+Extract every GC company you find and return ONLY a JSON array:
 [{
   "organization_name": "company name",
   "first_name": "owner first name if found",
   "last_name": "owner last name if found",
   "email": "email address if found or null",
-  "phone": "phone number if found or null", 
+  "phone": "phone number if found or null",
   "website": "website URL if found or null",
   "city": "city",
   "state": "2-letter state code",
   "source_url": "where you found this"
 }]
 
-Only include actual General Contractors who manage subcontractors.
-Skip: electricians, plumbers, roofers, HVAC, landscapers, solar.
-Return [] if none found. JSON only, no markdown.`
-    })
+Only include actual General Contractors who manage subcontractors on commercial or residential projects.
+Skip: electricians, plumbers, roofers, HVAC only, landscapers, solar installers.
+Return [] if none found. JSON array only, no markdown, no explanation.`
+      }]
+    }),
+    signal: AbortSignal.timeout(30000)
   });
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error('OpenAI ' + response.status + ': ' + err.substring(0, 200));
+    throw new Error('Claude search ' + response.status + ': ' + err.substring(0, 200));
   }
 
   const data = await response.json();
-  
-  // Extract text from response
-  const text = data.output
-    ?.filter(o => o.type === 'message')
-    ?.flatMap(o => o.content)
-    ?.filter(c => c.type === 'output_text')
-    ?.map(c => c.text)
-    ?.join('') || '[]';
 
-  const clean = text.replace(/```json|```/g, '').trim();
-  const contacts = JSON.parse(clean);
-  return Array.isArray(contacts) ? contacts : [];
+  // Extract text from Claude's response (may include tool use blocks)
+  const text = (data.content || [])
+    .filter(b => b.type === 'text')
+    .map(b => b.text)
+    .join('') || '[]';
+
+  const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    const contacts = JSON.parse(clean);
+    return Array.isArray(contacts) ? contacts : [];
+  } catch {
+    // Try to extract JSON array from the text
+    const match = clean.match(/\[[\s\S]*\]/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch { return []; }
+    }
+    return [];
+  }
 }
 
 async function getExistingGHLEmails() {
@@ -219,7 +234,7 @@ async function findProspects(options = {}) {
   // Search with OpenAI
   let contacts = [];
   try {
-    contacts = await searchWithOpenAI(query);
+    contacts = await searchWithClaude(query);
     console.log(`[Agent 01] Found ${contacts.length} raw results`);
   } catch(e) {
     console.error('[Agent 01] OpenAI search failed:', e.message);

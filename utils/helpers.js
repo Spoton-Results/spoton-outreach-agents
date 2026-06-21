@@ -48,7 +48,10 @@ async function callInstantly(method, endpoint, body = null) {
     },
     body: body ? JSON.stringify(body) : null
   });
-  if (!res.ok) throw new Error('Instantly error: ' + res.status);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error('Instantly error: ' + res.status + ' ' + errText.substring(0, 300));
+  }
   return res.json();
 }
 
