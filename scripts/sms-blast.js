@@ -14,6 +14,8 @@ try { require('dotenv').config({ path: './config/.env' }); } catch(e) {}
 console.log('[SMS-BLAST] Script starting — GHL_API_KEY present:', !!process.env.GHL_API_KEY);
 
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+const { notifyDashboard } = require('../utils/helpers');
+async function dashEvent(type, data) { try { await notifyDashboard(type, data); } catch(e) {} }
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const GHL_API_KEY  = process.env.GHL_API_KEY;
@@ -187,6 +189,14 @@ async function sendSMS(contact) {
   // Add to in-memory sets
   sentPhones.add(contact.phone);
   sentIds.add(contact.id);
+
+  // Notify dashboard live feed
+  await dashEvent('sms_sent', {
+    contact: firstName,
+    company: contact.companyName || '',
+    phone: contact.phone,
+    state: contact.state || ''
+  });
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
@@ -217,6 +227,7 @@ async function main() {
 
   if (!DRY_RUN) {
     log('✅ Within send window — starting in 5s (Ctrl+C to abort)...');
+    await dashEvent('sms_blast_start', { tag: TAG_FILTER, cap: SMS_DAILY_CAP });
     await sleep(5000);
   }
 
@@ -280,6 +291,10 @@ async function main() {
 
     await sleep(DELAY_BETWEEN_MS);
   }
+
+
+  // Notify dashboard with final summary
+  await dashEvent('sms_blast_complete', { sent: sentToday, skipped, failed, tag: TAG_FILTER });
 
   console.log('\n' + '═'.repeat(60));
   log(`✅ Sent:         ${sentToday}`);
