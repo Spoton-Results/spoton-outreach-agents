@@ -15,7 +15,11 @@
  *   node scripts/sms-blast.js --send --tag=ut-gc # UT only
  */
 
-require('dotenv').config({ path: './config/.env' });
+// Railway injects env vars directly — dotenv is only needed for local dev
+try { require('dotenv').config({ path: './config/.env' }); } catch(e) {}
+
+// Immediate startup confirmation — visible in Railway logs even on fast exit
+console.log('[SMS-BLAST] Script starting — GHL_API_KEY present:', !!process.env.GHL_API_KEY);
 
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
