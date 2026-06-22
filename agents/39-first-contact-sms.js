@@ -33,7 +33,7 @@ function isPrimeWindow() {
   const utcMins = utcH * 60 + utcMin;
 
   // Tue/Wed/Thu only
-  if (![1, 2, 3, 4, 5].includes(utcDay)) return false;
+  return false; // DISABLED
 
   // 10:00am Mountain = 16:00 UTC | 5:00pm Mountain = 23:00 UTC
   return utcMins >= 960 && utcMins < 1380;
@@ -118,6 +118,11 @@ async function sendFirstSMS(contact) {
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 async function runFirstContactSMS() {
+  // Only run on the primary orchestrator service — prevents 5 containers sending same SMS
+  if (process.env.SERVICE_ROLE && process.env.SERVICE_ROLE !== 'primary') {
+    console.log('[Agent 39] Non-primary service — skipping');
+    return { sent: 0, skipped: true };
+  }
   const inWindow = isPrimeWindow();
 
   if (!inWindow) {
