@@ -53,7 +53,7 @@ function isRealPhone(phone) {
 function buildSMS(contact) {
   const first = contact.firstNameRaw || contact.firstName || null;
   const name  = first ? `Hey ${first}` : 'Hey';
-  return `${name}, quick question — are your subs billing you accurately on every draw? Most GCs lose $8-15K per job without knowing it. Check it free: subdraw.com/login –Shawn`;
+  return `${name}, quick question — are your subs billing you accurately on every draw? Most GCs lose $8-15K per job without knowing it. Check it free: subdraw.com/login –Shawn. Reply STOP to opt out.`;
 }
 
 // ── FETCH UNSENT LEADS ────────────────────────────────────────────────────────
