@@ -5,7 +5,7 @@
  * During prime window sends ONE personalized SMS then tags sms-sent.
  * Agent 38 handles all replies after that.
  *
- * Prime window: Mon–Fri, 10:00am–5:00pm Mountain Time
+ * Prime window: Tue–Thu, 10:00am–5:00pm Mountain Time
  * Runs every 5 min via orchestrator (same tick as prospect finder)
  *
  * Tags used:
@@ -24,7 +24,7 @@ const BATCH_SIZE   = 20; // max sends per run to stay controlled
 const DELAY_MS     = 1500;
 
 // ── PRIME WINDOW ──────────────────────────────────────────────────────────────
-// Mon(1) Tue(2) Wed(3) Thu(4) Fri(5) — 10:00am to 5:00pm Mountain Time (UTC-6 in summer)
+// Tue(2) Wed(3) Thu(4) — 10:00am to 5:00pm Mountain Time (UTC-6 in summer)
 function isPrimeWindow() {
   const now    = new Date();
   const utcDay = now.getUTCDay();
@@ -32,8 +32,8 @@ function isPrimeWindow() {
   const utcMin  = now.getUTCMinutes();
   const utcMins = utcH * 60 + utcMin;
 
-  // Mon-Fri only
-  if (![1, 2, 3, 4, 5].includes(utcDay)) return false;
+  // Tue/Wed/Thu only
+  return false; // DISABLED
 
   // 10:00am Mountain = 16:00 UTC | 5:00pm Mountain = 23:00 UTC
   return utcMins >= 960 && utcMins < 1380;
