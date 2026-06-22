@@ -167,7 +167,8 @@ async function sendSMS(contact) {
   }
 
   // In-memory phone dedup — catches same number on multiple contacts
-  if (sentPhones.has(contact.phone)) {
+  const normalizedPhone = (contact.phone || '').replace(/\D/g, '');
+  if (sentPhones.has(normalizedPhone)) {
     log(`⏭  Skipping ${firstName} — phone ${contact.phone} already sent this run`);
     skipped++;
     return;
@@ -187,7 +188,7 @@ async function sendSMS(contact) {
   });
 
   // Add to in-memory sets
-  sentPhones.add(contact.phone);
+  sentPhones.add(normalizedPhone);
   sentIds.add(contact.id);
 
   // Notify dashboard live feed
@@ -197,6 +198,36 @@ async function sendSMS(contact) {
     phone: contact.phone,
     state: contact.state || ''
   });
+}
+
+
+// ── PRE-POPULATE SENT PHONES FROM GHL ────────────────────────────────────────
+// On every deploy, reload already-sent phones so we never double-text
+async function preloadSentPhones() {
+  log('🔄 Preloading already-sent phones from GHL...');
+  let startAfter = null, startAfterId = null, loaded = 0;
+  try {
+    while (true) {
+      let url = `/contacts/?locationId=${GHL_LOCATION}&limit=100&query=sms-sent`;
+      if (startAfter)   url += `&startAfter=${startAfter}`;
+      if (startAfterId) url += `&startAfterId=${startAfterId}`;
+      const data = await ghlRequest('GET', url);
+      const contacts = data.contacts || [];
+      if (!contacts.length) break;
+      contacts.forEach(c => {
+        if (c.phone) sentPhones.add(c.phone.replace(/\D/g, ''));
+        if (c.id)    sentIds.add(c.id);
+        loaded++;
+      });
+      if (!data.meta?.nextPage) break;
+      startAfter   = data.meta.startAfter;
+      startAfterId = data.meta.startAfterId;
+      await sleep(300);
+    }
+    log(`✅ Preloaded ${loaded} already-sent contacts — their numbers are locked out`);
+  } catch(e) {
+    log(`⚠️  Preload error (continuing anyway): ${e.message}`);
+  }
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
