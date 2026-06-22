@@ -39,6 +39,7 @@ const intervals = {
   demo_tracker:        6 * 60 * 60 * 1000,  // 6 hr
   sms_agent:           2 * 60 * 60 * 1000,  // 2 hr
   sms_reply_handler:   2 * 60 * 1000,       // 2 min
+  first_contact_sms:   5 * 60 * 1000,       // 5 min — new leads only, prime window gate
 };
 
 function shouldRun(key) {
@@ -167,6 +168,15 @@ async function tick() {
   }
 
 
+  // ── Every 5 min: First Contact SMS (Agent 39) — new leads only, prime window
+  if (shouldRun('first_contact_sms')) {
+    markRun('first_contact_sms');
+    runJob('First Contact SMS (39)', async () => {
+      const { runFirstContactSMS } = require('./agents/39-first-contact-sms');
+      await runFirstContactSMS();
+    });
+  }
+
   // ── Every 2 min: SMS Reply Handler (Agent 38) ─────────────────────────────
   if (shouldRun('sms_reply_handler')) {
     markRun('sms_reply_handler');
@@ -274,9 +284,7 @@ async function tick() {
   }
 
   // ── Tue/Wed/Thu 10am + 12:15pm MT: SMS Campaign ─────────────────────────
-  // SMS CAMPAIGN DISABLED — duplicate send bug under investigation
-  // const smsWindow = isSMSCampaignWindow();
-  // Re-enable after fix confirmed
+  // SMS blast removed — Agent 39 handles first contact, Agent 38 handles replies
 
   // ── Sunday midnight: Weekly analyzer ─────────────────────────────────────
   if (isDayOfWeek(0) && isHour(0) && !lastRun['weekly_' + now.toDateString()]) {
