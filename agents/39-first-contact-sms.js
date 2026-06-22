@@ -118,6 +118,18 @@ async function sendFirstSMS(contact) {
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 async function runFirstContactSMS() {
+
+  // Check if system is paused via dashboard
+  try {
+    const fetch2 = (await import('node-fetch')).default;
+    const pr = await fetch2(`${process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app'}/api/pause-status`, {signal: AbortSignal.timeout(3000)});
+    const ps = await pr.json();
+    if (ps.paused) {
+      console.log('[Agent] System paused — skipping');
+      return 0;
+    }
+  } catch(e) { /* dashboard unreachable — continue */ }
+
   // Only run on the primary orchestrator service — prevents 5 containers sending same SMS
   if (process.env.SERVICE_ROLE && process.env.SERVICE_ROLE !== 'primary') {
     console.log('[Agent 39] Non-primary service — skipping');
