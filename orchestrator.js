@@ -274,16 +274,9 @@ async function tick() {
   }
 
   // ── Tue/Wed/Thu 10am + 12:15pm MT: SMS Campaign ─────────────────────────
-  const smsWindow = isSMSCampaignWindow();
-  if (smsWindow) {
-    const smsKey = 'sms_campaign_' + smsWindow + '_' + now.toDateString();
-    if (!lastRun[smsKey]) {
-      lastRun[smsKey] = Date.now();
-      runJob('SMS Campaign (' + smsWindow + ')', async () => {
-        await runSMSCampaign(smsWindow);
-      });
-    }
-  }
+  // SMS CAMPAIGN DISABLED — duplicate send bug under investigation
+  // const smsWindow = isSMSCampaignWindow();
+  // Re-enable after fix confirmed
 
   // ── Sunday midnight: Weekly analyzer ─────────────────────────────────────
   if (isDayOfWeek(0) && isHour(0) && !lastRun['weekly_' + now.toDateString()]) {
