@@ -142,6 +142,10 @@ async function updateContact(contactId, category) {
 
 // ── MAIN POLL LOOP ────────────────────────────────────────────────────────────
 async function pollSMSReplies() {
+  // Only run on the primary orchestrator service — prevents 5 containers double-replying
+  if (process.env.SERVICE_ROLE && process.env.SERVICE_ROLE !== 'primary') {
+    return 0;
+  }
   console.log('[Agent 38] Polling GHL for inbound SMS replies...');
 
   try {
