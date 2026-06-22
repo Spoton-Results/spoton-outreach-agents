@@ -38,6 +38,7 @@ const intervals = {
   revenue_monitor:     2 * 60 * 60 * 1000,  // 2 hr
   demo_tracker:        6 * 60 * 60 * 1000,  // 6 hr
   sms_agent:           2 * 60 * 60 * 1000,  // 2 hr
+  sms_reply_handler:   2 * 60 * 1000,       // 2 min
 };
 
 function shouldRun(key) {
@@ -162,6 +163,16 @@ async function tick() {
     runJob('Instantly→GHL Stage Sync', async () => {
       const { syncInstantlyToGHL } = require('./agents/09-crm-logger');
       await syncInstantlyToGHL();
+    });
+  }
+
+
+  // ── Every 2 min: SMS Reply Handler (Agent 38) ─────────────────────────────
+  if (shouldRun('sms_reply_handler')) {
+    markRun('sms_reply_handler');
+    runJob('SMS Reply Handler (38)', async () => {
+      const { pollSMSReplies } = require('./agents/38-sms-reply-handler');
+      await pollSMSReplies();
     });
   }
 
