@@ -33,7 +33,7 @@ function isPrimeWindow() {
   const utcMins = utcH * 60 + utcMin;
 
   // Tue/Wed/Thu only
-  return false; // DISABLED
+  if (![1, 2, 3, 4, 5].includes(utcDay)) return false;
 
   // 10:00am Mountain = 16:00 UTC | 5:00pm Mountain = 23:00 UTC
   return utcMins >= 960 && utcMins < 1380;
