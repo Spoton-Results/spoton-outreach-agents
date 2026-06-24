@@ -1,72 +1,88 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * AI Router — callClaude
+ *
+ * Priority:
+ *   DEFAULT  → OpenAI GPT-4o-mini (fast, cheap, handles 90% of tasks)
+ *   QUALITY  → Claude Sonnet (email copy, objections, personalization)
+ *   FALLBACK → if primary fails, auto-switches to the other
+ *
+ * Pass options.quality = true to force Claude for high-stakes tasks.
+ * Agents that always use Claude: 04, 05, 06, 13, 38
+ */
 async function callClaude(systemPrompt, userPrompt, options = {}) {
   const fetch = (await import('node-fetch')).default;
 
-  // ── Try Anthropic first ───────────────────────────────────────────────────
-  if (process.env.ANTHROPIC_API_KEY) {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: options.max_tokens || 2000,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userPrompt }]
-        })
-      });
+  // Quality flag forces Claude regardless of default priority
+  const useClaudeFirst = options.quality === true;
 
-      // 529 = overloaded, 529/402/529 = credit exhausted — fall through to OpenAI
-      if (response.status === 402 || response.status === 529) {
-        console.warn('[callClaude] Anthropic credit/capacity issue — falling back to OpenAI');
-      } else if (!response.ok) {
-        throw new Error('Claude API error: ' + response.status);
-      } else {
-        const data = await response.json();
-        if (data.content?.[0]?.text) {
-          return data.content[0].text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        }
-        console.warn('[callClaude] Anthropic returned empty — falling back to OpenAI');
-      }
-    } catch (e) {
-      if (e.message.includes('Claude API error')) throw e; // hard error, don't fallback
-      console.warn('[callClaude] Anthropic error, trying OpenAI:', e.message);
+  async function tryOpenAI() {
+    if (!process.env.OPENAI_API_KEY) throw new Error('No OPENAI_API_KEY set');
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY
+      },
+      body: JSON.stringify({
+        model: options.oai_model || 'gpt-4o-mini',
+        max_tokens: options.max_tokens || 2000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      })
+    });
+    if (!res.ok) throw new Error('OpenAI error: ' + res.status + ' ' + (await res.text()).substring(0, 200));
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI returned empty content');
+    return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  }
+
+  async function tryClaude() {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('No ANTHROPIC_API_KEY set');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: options.max_tokens || 2000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+    if (res.status === 402 || res.status === 529) throw new Error('Anthropic credits/capacity: ' + res.status);
+    if (!res.ok) throw new Error('Claude error: ' + res.status);
+    const data = await res.json();
+    const text = data.content?.[0]?.text;
+    if (!text) throw new Error('Claude returned empty content');
+    return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  }
+
+  if (useClaudeFirst) {
+    // Quality tasks: Claude first, OpenAI fallback
+    try {
+      return await tryClaude();
+    } catch(e) {
+      console.warn('[AI Router] Claude failed (' + e.message + ') — falling back to OpenAI GPT-4o');
+      return await tryOpenAI();
+    }
+  } else {
+    // Standard tasks: OpenAI first (cheaper), Claude fallback
+    try {
+      return await tryOpenAI();
+    } catch(e) {
+      console.warn('[AI Router] OpenAI failed (' + e.message + ') — falling back to Claude');
+      return await tryClaude();
     }
   }
-
-  // ── Fallback: OpenAI GPT-4o-mini ─────────────────────────────────────────
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('Both Anthropic and OpenAI unavailable — check API keys and credits');
-  }
-
-  console.log('[callClaude] Using OpenAI fallback');
-  const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY
-    },
-    body: JSON.stringify({
-      model: options.oai_model || 'gpt-4o-mini',
-      max_tokens: options.max_tokens || 2000,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
-    })
-  });
-
-  if (!oaiRes.ok) throw new Error('OpenAI fallback error: ' + oaiRes.status + ' ' + (await oaiRes.text()).substring(0, 200));
-  const oaiData = await oaiRes.json();
-  const text = oaiData.choices?.[0]?.message?.content;
-  if (!text) throw new Error('OpenAI returned empty content');
-  return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 }
 
 async function callGHL(method, endpoint, body = null) {
