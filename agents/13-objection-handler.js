@@ -52,7 +52,7 @@ Under 75 words.
 
 Return: { "subject": "Re: ...", "body": "..." }`;
 
-  const response = JSON.parse(await callClaude(SYSTEM, prompt));
+  const response = JSON.parse(await callClaude(SYSTEM, prompt, { quality: true }));
 
   try {
     const locationId = process.env.GHL_LOCATION_ID || icp.ghl.location_id;
