@@ -70,7 +70,7 @@ Return: {
   "fatal_issues": ["any automatic disqualifiers found"]
 }`;
 
-  try { return JSON.parse(await callClaude(SYSTEM, prompt)); } catch(e) { console.error("[Agent 06] Parse error:", e.message); return { score: 7, approved: true, issues: [], rewrite_needed: false }; }
+  try { return JSON.parse(await callClaude(SYSTEM, prompt, { quality: true })); } catch(e) { console.error("[Agent 06] Parse error:", e.message); return { score: 7, approved: true, issues: [], rewrite_needed: false }; }
 }
 
 async function reviewBatch(prospects, minScore = 7) {
