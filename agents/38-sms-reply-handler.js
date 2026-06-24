@@ -67,7 +67,7 @@ Return JSON only: { "message": "..." }`;
 async function classifyReply(body) {
   const prompt = `Classify this inbound SMS reply to SubDraw outreach:\n\n"${body.substring(0, 400)}"\n\nReturn JSON only.`;
   try {
-    return JSON.parse(await callClaude(CLASSIFY_SYSTEM, prompt, { max_tokens: 200 }));
+    return JSON.parse(await callClaude(CLASSIFY_SYSTEM, prompt, { quality: true, max_tokens: 200 }));
   } catch(e) {
     return { category: 'unclear', urgency: 'medium' };
   }
@@ -88,7 +88,7 @@ async function generateResponse(body, category) {
   const prompt = `Write a reply SMS to this GC message:\n\n"${body.substring(0, 400)}"\n\nContext: ${contextMap[category] || contextMap.unclear}\n\nUnder 3 sentences. Human tone. Return JSON only: { "message": "..." }`;
 
   try {
-    const result = JSON.parse(await callClaude(RESPOND_SYSTEM, prompt, { max_tokens: 300 }));
+    const result = JSON.parse(await callClaude(RESPOND_SYSTEM, prompt, { quality: true, max_tokens: 300 }));
     return result.message;
   } catch(e) {
     // Safe fallback
