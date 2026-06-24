@@ -286,6 +286,70 @@ async function tick() {
   // ── Tue/Wed/Thu 10am + 12:15pm MT: SMS Campaign ─────────────────────────
   // SMS blast removed — Agent 39 handles first contact, Agent 38 handles replies
 
+
+  // ── Daily 8am: Push GHL contacts to Instantly (Agent 08) ─────────────────
+  // Runs independently — pushes verified contacts to Instantly daily
+  if (isHour(8) && !lastRun['instantly_push_' + now.toDateString()]) {
+    lastRun['instantly_push_' + now.toDateString()] = Date.now();
+    runJob('Instantly Push (08)', async () => {
+      const { callGHL, callInstantly, logRun } = require('./utils/helpers');
+      const LOCATION   = process.env.GHL_LOCATION_ID  || 'oe1TpmlDynQGFNdYLkaK';
+      const CAMPAIGN   = process.env.INSTANTLY_CAMPAIGN_ID;
+      const CAMPAIGN_UT = process.env.INSTANTLY_CAMPAIGN_ID_UT;
+      if (!CAMPAIGN) { console.log('[Agent 08] No INSTANTLY_CAMPAIGN_ID — skipping'); return; }
+
+      let toLoad = [], startAfter = null, startAfterId = null;
+      while (toLoad.length < 200) {
+        let url = '/contacts/?locationId=' + LOCATION + '&limit=100&query=gc-prospect';
+        if (startAfter)   url += '&startAfter='   + startAfter;
+        if (startAfterId) url += '&startAfterId=' + startAfterId;
+        const data = await callGHL('GET', url);
+        const batch = (data.contacts || []).filter(c => {
+          const tags = c.tags || [];
+          return c.email && !c.email.includes('@example') &&
+                 !tags.includes('instantly-pushed') &&
+                 !tags.includes('do-not-contact') && !c.dnd;
+        });
+        toLoad.push(...batch);
+        if (!data.meta?.nextPage) break;
+        startAfter   = data.meta.startAfter;
+        startAfterId = data.meta.startAfterId;
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      if (!toLoad.length) { console.log('[Agent 08] No new contacts to push'); return; }
+      console.log('[Agent 08] Pushing ' + toLoad.length + ' contacts to Instantly');
+
+      const caLeads = [], utLeads = [];
+      for (const c of toLoad) {
+        const lead = {
+          email: c.email, first_name: c.firstNameRaw || c.firstName || '',
+          last_name: c.lastNameRaw || c.lastName || '',
+          company_name: c.companyName || '', phone: c.phone || '',
+          custom_variables: { city: c.city || '', state: c.state || '' }
+        };
+        const isUT = (c.tags || []).includes('ut-gc');
+        if (isUT && CAMPAIGN_UT) utLeads.push({ id: c.id, lead });
+        else caLeads.push({ id: c.id, lead });
+      }
+
+      if (caLeads.length) {
+        try {
+          await callInstantly('POST', '/lead/add/bulk', { campaign_id: CAMPAIGN, leads: caLeads.map(l => l.lead), skip_if_in_workspace: true });
+          for (const l of caLeads) { await callGHL('POST', '/contacts/' + l.id + '/tags', { tags: ['instantly-pushed'] }); await new Promise(r => setTimeout(r, 100)); }
+        } catch(e) { console.error('[Agent 08] CA push error:', e.message); }
+      }
+      if (utLeads.length && CAMPAIGN_UT) {
+        try {
+          await callInstantly('POST', '/lead/add/bulk', { campaign_id: CAMPAIGN_UT, leads: utLeads.map(l => l.lead), skip_if_in_workspace: true });
+          for (const l of utLeads) { await callGHL('POST', '/contacts/' + l.id + '/tags', { tags: ['instantly-pushed'] }); await new Promise(r => setTimeout(r, 100)); }
+        } catch(e) { console.error('[Agent 08] UT push error:', e.message); }
+      }
+      console.log('[Agent 08] Done — CA:' + caLeads.length + ' UT:' + utLeads.length);
+      logRun('08-instantly-push', { ca: caLeads.length, ut: utLeads.length });
+    });
+  }
+
   // ── Sunday midnight: Weekly analyzer ─────────────────────────────────────
   if (isDayOfWeek(0) && isHour(0) && !lastRun['weekly_' + now.toDateString()]) {
     lastRun['weekly_' + now.toDateString()] = Date.now();
