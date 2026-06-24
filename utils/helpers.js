@@ -3,24 +3,70 @@ const path = require('path');
 
 async function callClaude(systemPrompt, userPrompt, options = {}) {
   const fetch = (await import('node-fetch')).default;
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+
+  // ── Try Anthropic first ───────────────────────────────────────────────────
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: options.max_tokens || 2000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }]
+        })
+      });
+
+      // 529 = overloaded, 529/402/529 = credit exhausted — fall through to OpenAI
+      if (response.status === 402 || response.status === 529) {
+        console.warn('[callClaude] Anthropic credit/capacity issue — falling back to OpenAI');
+      } else if (!response.ok) {
+        throw new Error('Claude API error: ' + response.status);
+      } else {
+        const data = await response.json();
+        if (data.content?.[0]?.text) {
+          return data.content[0].text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        }
+        console.warn('[callClaude] Anthropic returned empty — falling back to OpenAI');
+      }
+    } catch (e) {
+      if (e.message.includes('Claude API error')) throw e; // hard error, don't fallback
+      console.warn('[callClaude] Anthropic error, trying OpenAI:', e.message);
+    }
+  }
+
+  // ── Fallback: OpenAI GPT-4o-mini ─────────────────────────────────────────
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('Both Anthropic and OpenAI unavailable — check API keys and credits');
+  }
+
+  console.log('[callClaude] Using OpenAI fallback');
+  const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
+      'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: options.oai_model || 'gpt-4o-mini',
       max_tokens: options.max_tokens || 2000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
     })
   });
-  if (!response.ok) throw new Error('Claude API error: ' + response.status);
-  const data = await response.json();
-  if (!data.content?.[0]?.text) throw new Error('Claude returned empty content: ' + JSON.stringify(data));
-  return data.content[0].text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+  if (!oaiRes.ok) throw new Error('OpenAI fallback error: ' + oaiRes.status + ' ' + (await oaiRes.text()).substring(0, 200));
+  const oaiData = await oaiRes.json();
+  const text = oaiData.choices?.[0]?.message?.content;
+  if (!text) throw new Error('OpenAI returned empty content');
+  return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 }
 
 async function callGHL(method, endpoint, body = null) {
