@@ -150,14 +150,18 @@ async function notifyDashboard(type, data) {
   const url = process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app';
   try {
     const fetch = (await import('node-fetch')).default;
+    const secret = process.env.GHL_WEBHOOK_SECRET || '';
     await fetch(url + '/webhook/ghl', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Agent-Secret': secret
+      },
       body: JSON.stringify({ type, source: 'agent', ...data }),
-      timeout: 3000
+      signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
     });
   } catch(e) {
-    // Non-blocking " never fail because dashboard is down
+    // Non-blocking — never fail because dashboard is down
   }
 }
 
