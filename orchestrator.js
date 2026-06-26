@@ -21,7 +21,7 @@
  *   Skips: contacts already tagged sms-sent, 555 numbers, DND, weekends
  */
 require('dotenv').config({ path: './config/.env' });
-const { logRun } = require('./utils/helpers');
+const { logRun, pingDashboard } = require('./utils/helpers');
 
 console.log('═══════════════════════════════════════════════');
 console.log('🚀 SubDraw Master Orchestrator — Starting');
@@ -112,6 +112,7 @@ let runCount = 0;
 
 async function tick() {
   runCount++;
+  await pingDashboard('orchestrator', 'ok', 'tick #' + (runCount));
   const now = new Date();
   console.log(`\n[Orchestrator] Tick #${runCount} — ${now.toISOString()}`);
 
