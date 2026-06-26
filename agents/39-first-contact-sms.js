@@ -16,7 +16,7 @@
  */
 
 require('dotenv').config({ path: './config/.env' });
-const { callGHL, callClaude, logRun, notifyDashboard } = require('../utils/helpers');
+const { callGHL, callClaude, logRun, notifyDashboard, pingDashboard } = require('../utils/helpers');
 
 const FROM_NUMBER  = process.env.FROM_NUMBER    || '+14352911877';
 const LOCATION_ID  = process.env.GHL_LOCATION_ID || 'oe1TpmlDynQGFNdYLkaK';
@@ -118,6 +118,7 @@ async function sendFirstSMS(contact) {
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 async function runFirstContactSMS() {
+  await pingDashboard(39, 'ok', 'first-contact-sms tick');
 
   // Check if system is paused via dashboard
   try {
