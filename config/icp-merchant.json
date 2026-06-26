@@ -1,0 +1,156 @@
+{
+  "product": {
+    "name": "SpotOn Results",
+    "url": "spotonresults.com",
+    "demo_url": "https://spotonresults.com/audit",
+    "positioning": "Free merchant statement audit + multi-processor matching for small businesses overpaying on card processing",
+    "tagline": "We audit your statement for free. Then we find you the right processor — not just a cheaper rate.",
+    "pricing_model": "Revenue share on processing volume — merchant pays nothing upfront",
+    "trial_days": 0,
+    "audit_cta": "Free 10-minute statement audit — we show you exactly what you're overpaying",
+    "demo_cta_options": [
+      "Send us your last processing statement. We'll show you exactly what you're overpaying in 10 minutes — no strings.",
+      "We audited 47 statements last month. Average merchant was overpaying $380/month. Want yours checked?",
+      "Your processor just got acquired. That almost never means lower fees for you. Free audit — spotonresults.com/audit",
+      "We work with TSYS, Fiserv, and 4 other processors. We find the right fit for your business type — not just the cheapest quote.",
+      "Square and Stripe are the most expensive way to process at scale. Free audit shows you exactly how much you're leaving on the table."
+    ],
+    "funnel": "cold_sms → free_audit_offer → statement_review → processor_match → switch → residual",
+    "edge_1_audit": {
+      "name": "Free Statement Audit",
+      "hook": "Most merchants on tiered or flat-rate pricing are overpaying $200-$600/month and have no idea",
+      "proof": "Average business processing $30k/month saves $2,400-$4,800/year switching to interchange-plus",
+      "process": "Send us your last statement → we break down interchange vs markup vs hidden fees → we show the savings",
+      "zero_risk": "No commitment, no call required, no obligation to switch"
+    },
+    "edge_3_multiprocessor": {
+      "name": "Multi-Processor Fit",
+      "processors": {
+        "restaurants_retail": "SpotOn — built for hospitality, loyalty + tipping built in",
+        "high_volume_retail": "TSYS — lowest markup for established merchants doing $50k+/month",
+        "ecommerce_saas": "Auth.net + NMI — best gateway stack for online and subscription billing",
+        "high_risk": "Maverick — approves industries others won't touch",
+        "enterprise_multi_location": "Fiserv — enterprise-grade, multi-location management"
+      },
+      "pitch": "We don't have one processor we push. We match you to the right one for your business type, volume, and card mix. That's something no single-processor ISO can offer."
+    },
+    "what_we_replace": [
+      "Square (2.6% + $0.10 flat rate)",
+      "Stripe (2.9% + $0.30 per transaction)",
+      "Worldpay/Global Payments (post-acquisition fee bloat)",
+      "Tiered pricing with hidden non-qualified surcharges",
+      "Locked long-term processor contracts",
+      "Single-processor ISOs with no flexibility"
+    ],
+    "pain_points": [
+      "Paying 2.5-3.5% blended when interchange-plus would cost 1.8-2.2%",
+      "Processor acquired by Global Payments or Worldpay — fees quietly rising",
+      "Flat-rate pricing that works against high debit card volume",
+      "Can't read their processing statement — no idea what they're actually paying",
+      "Locked into a processor that doesn't fit their business type",
+      "Hidden fees: PCI compliance, batch fees, statement fees, monthly minimums",
+      "No one ever audited their statement or explained the savings available"
+    ],
+    "value_props": [
+      "Free statement audit — see exactly what you're overpaying before you commit to anything",
+      "IC+ 0.20% + $0.20 markup — one of the most competitive rates available",
+      "Six processors to choose from — we match you to the right fit",
+      "No long-term contracts on most programs",
+      "Average merchant saves $300-$500/month after switching",
+      "Worldpay/Global Payments refugees — we're already taking their clients"
+    ]
+  },
+  "ideal_customer_profile": {
+    "titles": [
+      "owner", "co-owner", "president", "CEO", "founder",
+      "general manager", "operations manager", "CFO", "controller",
+      "office manager", "bookkeeper"
+    ],
+    "industries": [
+      "restaurant", "retail", "salon", "spa", "dental", "medical",
+      "auto repair", "contractor", "landscaping", "gym", "fitness",
+      "hotel", "boutique", "bar", "brewery", "coffee shop",
+      "e-commerce", "professional services", "legal", "accounting"
+    ],
+    "current_processors_to_target": [
+      "Square",
+      "Stripe",
+      "Worldpay",
+      "Global Payments",
+      "First Data",
+      "Heartland",
+      "PayPal Here",
+      "Clover"
+    ],
+    "volume_signals": {
+      "min_monthly_volume": 15000,
+      "sweet_spot": "30000-500000",
+      "reason": "Below $15k flat-rate is competitive. Above $15k interchange-plus wins every time."
+    },
+    "company_size": { "min": 1, "max": 200 },
+    "high_value_signals": [
+      "processing volume over $15k/month",
+      "on Square or Stripe (provably expensive at scale)",
+      "processor recently acquired (Worldpay/Global Payments)",
+      "restaurant or retail with high card volume",
+      "multiple locations",
+      "recently hired bookkeeper or controller (cost-conscious)",
+      "mentions processing fees in reviews or social media"
+    ],
+    "disqualifiers": [
+      "under $5k/month volume",
+      "cash-only business",
+      "already on interchange-plus below 0.25%",
+      "enterprise with dedicated payment team"
+    ]
+  },
+  "sms_scripts": {
+    "first_contact": [
+      "Hey [FirstName] — quick question. Are you on Square or Stripe for payments? Most businesses at your volume are overpaying $300-500/month. We do a free 10-min statement audit — no pitch, just the numbers. Worth a look?",
+      "Hi [FirstName], noticed [BusinessName] processes cards. We do free merchant statement audits — last month we found $380/month in savings for a business like yours. No commitment, just the actual numbers. Interested?",
+      "Hey [FirstName] — your processor may have just raised fees without telling you. Worldpay and Global Payments have been doing this since their merger. Free audit takes 10 min and shows exactly what you're paying vs what you should be. Want me to run it?"
+    ],
+    "follow_up_1": "Hey [FirstName] — just following up on the statement audit. Takes 10 minutes, costs nothing, and shows exactly where you're losing money on processing. Still worth checking?",
+    "follow_up_2": "Last follow-up [FirstName] — we work with 6 processors including TSYS, Fiserv, and SpotOn. Most ISOs push one processor. We find the right fit for your business type. Free audit if you want to see the difference.",
+    "reply_interested": "Great — easiest way is to send over your last processing statement (just the summary page is fine). I'll break down interchange vs markup vs hidden fees and show you exactly where the savings are. What's the best email to send findings to?",
+    "reply_not_now": "No problem. If your processor ever raises rates or you want a second opinion on your statement, we're here. Good luck with [BusinessName]."
+  },
+  "email_sequences": {
+    "subject_lines": [
+      "Quick question about your card processing fees",
+      "Free audit: are you overpaying on merchant services?",
+      "Your processor may have raised fees without telling you",
+      "How much is Square/Stripe actually costing you at your volume?",
+      "[BusinessName] — we found something on your processing statement"
+    ],
+    "email_1": {
+      "subject": "Quick question about your card processing fees",
+      "angle": "audit_hook",
+      "body_summary": "We audit merchant statements for free. Most businesses at your volume are overpaying $200-500/month. No pitch, just the numbers. Send your last statement and we'll show you exactly what you're paying vs what you should be."
+    },
+    "email_2": {
+      "subject": "Your processor may have raised fees without telling you",
+      "angle": "worldpay_acquisition_angle",
+      "body_summary": "Global Payments acquired Worldpay in January 2026. Post-acquisition, processors quietly raise fees while lowering interchange categories. We're already auditing statements for merchants who suspect this happened. Free, takes 10 minutes."
+    },
+    "email_3": {
+      "subject": "We work with 6 processors — here's why that matters",
+      "angle": "multiprocessor_edge",
+      "body_summary": "Most ISOs push one processor because that's where their commission is. We work with TSYS, Fiserv, Maverick, Auth.net, NMI, and SpotOn. We match you to the right one for your business type. Restaurants go on SpotOn. High volume retail on TSYS. High-risk on Maverick. Free audit shows which one fits you."
+    }
+  },
+  "ghl": {
+    "location_id": "oe1TpmlDynQGFNdYLkaK",
+    "pipeline_id": "MERCHANT_PIPELINE_ID",
+    "stages": {
+      "cold": "MERCHANT_STAGE_COLD",
+      "audit_offered": "MERCHANT_STAGE_AUDIT_OFFERED",
+      "statement_received": "MERCHANT_STAGE_STATEMENT_RECEIVED",
+      "proposal_sent": "MERCHANT_STAGE_PROPOSAL_SENT",
+      "closed": "MERCHANT_STAGE_CLOSED"
+    }
+  },
+  "instantly": {
+    "campaign_id": "MERCHANT_CAMPAIGN_ID"
+  }
+}
