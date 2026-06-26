@@ -3,10 +3,11 @@
  * Pushes verified prospects into Instantly SubDraw California GCs campaign
  */
 require('dotenv').config({ path: './config/.env' });
-const { callInstantly, logRun } = require('../utils/helpers');
+const { callInstantly, logRun, pingDashboard } = require('../utils/helpers');
 const icp = require('../config/icp.json');
 
 async function launchCampaigns(prospects, options = {}) {
+  await pingDashboard(8, 'ok', 'campaign-launcher running — ' + prospects.length + ' prospects');
   const campaignId = options.campaignId || campaignId;
   console.log('[Agent 08] Launching ' + prospects.length + ' prospects into Instantly...');
   const launched = [], failed = [];
