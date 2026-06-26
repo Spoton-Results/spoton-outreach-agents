@@ -1,0 +1,28 @@
+{
+  "campaigns": {
+    "restaurants_national": {
+      "instantly_campaign_id": "MERCHANT_RESTAURANT_CAMPAIGN_ID",
+      "target": "restaurants_bars_breweries",
+      "processor_targets": ["Square", "Stripe", "Clover", "Toast"],
+      "launch_date": "2026-07-15",
+      "status": "not_created",
+      "notes": "Create in Instantly: SpotOn Results — Restaurant & Bar Owners. Angle: Square is the most expensive way to process high card volume. Subject: Quick question about your card processing fees"
+    },
+    "retail_national": {
+      "instantly_campaign_id": "MERCHANT_RETAIL_CAMPAIGN_ID",
+      "target": "retail_boutique_salon_spa",
+      "processor_targets": ["Square", "Stripe", "Worldpay", "First Data"],
+      "launch_date": "2026-07-22",
+      "status": "not_created",
+      "notes": "Create in Instantly: SpotOn Results — Retail & Salon Owners. Angle: Worldpay/Global Payments merger — fees rising. Subject: Your processor may have raised fees without telling you"
+    },
+    "professional_services": {
+      "instantly_campaign_id": "MERCHANT_PROF_CAMPAIGN_ID",
+      "target": "dental_medical_legal_accounting",
+      "processor_targets": ["Stripe", "PayPal", "Heartland"],
+      "launch_date": "2026-08-01",
+      "status": "not_created",
+      "notes": "Create in Instantly: SpotOn Results — Professional Services. Angle: Multi-processor fit. Subject: We work with 6 processors — here's why that matters"
+    }
+  }
+}
