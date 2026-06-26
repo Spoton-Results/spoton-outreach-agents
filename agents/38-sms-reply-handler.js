@@ -12,7 +12,7 @@
  */
 
 require('dotenv').config({ path: './config/.env' });
-const { callClaude, callGHL, logRun, notifyDashboard } = require('../utils/helpers');
+const { callClaude, callGHL, logRun, notifyDashboard, pingDashboard } = require('../utils/helpers');
 
 const FROM_SMS    = process.env.FROM_NUMBER       || '+14352911877';
 const FROM_VOICE  = process.env.FROM_VOICE_NUMBER || '+14359995348';
@@ -142,6 +142,7 @@ async function updateContact(contactId, category) {
 
 // ── MAIN POLL LOOP ────────────────────────────────────────────────────────────
 async function pollSMSReplies() {
+  await pingDashboard(38, 'ok', 'sms-reply-handler tick');
 
   // Check if system is paused via dashboard
   try {
