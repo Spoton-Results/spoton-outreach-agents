@@ -1,0 +1,44 @@
+# ── PRODUCT IDENTITY ─────────────────────────────────────────────────────────
+PRODUCT=merchant
+ICP_CONFIG=./config/icp-merchant.json
+CAMPAIGNS_CONFIG=./config/campaigns-merchant.json
+
+# ── AI ────────────────────────────────────────────────────────────────────────
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+
+# ── GoHighLevel ───────────────────────────────────────────────────────────────
+GHL_API_KEY=
+GHL_LOCATION_ID=oe1TpmlDynQGFNdYLkaK
+GHL_PIPELINE_ID=MERCHANT_PIPELINE_ID
+GHL_STAGE_COLD=MERCHANT_STAGE_COLD
+GHL_STAGE_EMAILED=MERCHANT_STAGE_AUDIT_OFFERED
+GHL_STAGE_REPLIED=MERCHANT_STAGE_STATEMENT_RECEIVED
+
+# ── Instantly ─────────────────────────────────────────────────────────────────
+INSTANTLY_API_KEY=
+INSTANTLY_CAMPAIGN_ID=MERCHANT_RESTAURANT_CAMPAIGN_ID
+
+# ── Prospecting ───────────────────────────────────────────────────────────────
+APOLLO_API_KEY=
+VIBE_API_KEY=
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+TARGET_STATE=National
+TARGET_INDUSTRIES=restaurant,retail,salon,dental,auto_repair
+TARGET_PROCESSORS=Square,Stripe,Worldpay,Global Payments
+MIN_MONTHLY_VOLUME=15000
+MAX_PROSPECTS_PER_RUN=25
+DAILY_OUTREACH_LIMIT=100
+LOG_LEVEL=info
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+DASHBOARD_URL=https://dashboard-production-f04a.up.railway.app
+
+# ── Webhook secrets ───────────────────────────────────────────────────────────
+INSTANTLY_WEBHOOK_SECRET=
+GHL_WEBHOOK_SECRET=
+
+# ── SMS ───────────────────────────────────────────────────────────────────────
+GHL_SMS_NUMBER=+14352911877
+FOUNDER_EMAIL=
