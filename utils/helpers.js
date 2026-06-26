@@ -131,6 +131,21 @@ module.exports = { callClaude, callGHL, callInstantly, logRun, sleep };
 
 // "" Dashboard webhook notifier """"""""""""""""""""""""""""""""""""""""""""""
 // Every agent action posts to the dashboard for real-time activity feed
+
+async function pingDashboard(agentId, status='ok', detail='') {
+  try {
+    const url = process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app';
+    const fetch = (await import('node-fetch')).default;
+    await fetch(url + '/api/agent-heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: agentId, status, detail }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+    });
+  } catch(e) { /* silent — never block agent execution */ }
+}
+module.exports.pingDashboard = pingDashboard;
+
 async function notifyDashboard(type, data) {
   const url = process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app';
   try {
