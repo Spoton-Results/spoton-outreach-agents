@@ -1,42 +1,45 @@
 /**
- * Agent 39: First Contact SMS
+ * Agent 39: First Contact SMS — PRODUCT-AWARE
  *
- * Watches for new GHL contacts tagged gc-prospect that haven't been texted yet.
- * During prime window sends ONE personalized SMS then tags sms-sent.
+ * SubDraw:  GC invoice protection hook
+ * Merchant: Edge 1 (free statement audit) + Edge 3 (multi-processor fit) hook
+ *
+ * Watches for new GHL contacts tagged for outreach that haven't been texted yet.
+ * During prime window sends ONE personalized SMS then tags sent.
  * Agent 38 handles all replies after that.
  *
- * Prime window: Tue–Thu, 10:00am–5:00pm Mountain Time
- * Runs every 5 min via orchestrator (same tick as prospect finder)
- *
- * Tags used:
- *   gc-prospect    → contact is a target (set by Agent 01)
- *   sms-sent       → contact has received first SMS (set by this agent)
- *   sms-queued     → contact is waiting for prime window
- *   do-not-contact → never text (set by Agent 38 on STOP)
+ * SubDraw prime window:  Tue–Thu 10am–5pm Mountain (construction-specific)
+ * Merchant prime window: Mon–Fri 9am–6pm Mountain (broader business hours)
  */
 
 require('dotenv').config({ path: './config/.env' });
 const { callGHL, callClaude, logRun, notifyDashboard, pingDashboard } = require('../utils/helpers');
+const { isMerchant, PRODUCT, MERCHANT_SMS_TEMPLATES, SUBDRAW_SMS_TEMPLATES } = require('../utils/product-config');
 
 const FROM_NUMBER  = process.env.FROM_NUMBER    || '+14352911877';
 const LOCATION_ID  = process.env.GHL_LOCATION_ID || 'oe1TpmlDynQGFNdYLkaK';
-const BATCH_SIZE   = 20; // max sends per run to stay controlled
+const BATCH_SIZE   = 20;
 const DELAY_MS     = 1500;
+const PROSPECT_TAG = isMerchant ? 'merchant-prospect' : 'gc-prospect';
+const SENT_TAG     = isMerchant ? 'merchant-sms-sent' : 'sms-sent';
 
 // ── PRIME WINDOW ──────────────────────────────────────────────────────────────
-// Tue(2) Wed(3) Thu(4) — 10:00am to 5:00pm Mountain Time (UTC-6 in summer)
 function isPrimeWindow() {
-  const now    = new Date();
-  const utcDay = now.getUTCDay();
-  const utcH   = now.getUTCHours();
+  const now     = new Date();
+  const utcDay  = now.getUTCDay();
+  const utcH    = now.getUTCHours();
   const utcMin  = now.getUTCMinutes();
   const utcMins = utcH * 60 + utcMin;
 
-  // Tue/Wed/Thu only
-  return false; // DISABLED
-
-  // 10:00am Mountain = 16:00 UTC | 5:00pm Mountain = 23:00 UTC
-  return utcMins >= 960 && utcMins < 1380;
+  if (isMerchant) {
+    // Merchant: Mon–Fri (1–5), 9am–6pm Mountain (UTC-6 summer = 15:00–00:00 UTC)
+    if (![1,2,3,4,5].includes(utcDay)) return false;
+    return utcMins >= 900 && utcMins < 1440; // 15:00–24:00 UTC = 9am–6pm MT
+  } else {
+    // SubDraw: Tue–Thu only, 10am–5pm Mountain (UTC-6 summer = 16:00–23:00 UTC)
+    if (![2,3,4].includes(utcDay)) return false;
+    return utcMins >= 960 && utcMins < 1380; // 16:00–23:00 UTC = 10am–5pm MT
+  }
 }
 
 // ── PHONE VALIDATION ──────────────────────────────────────────────────────────
@@ -49,170 +52,100 @@ function isRealPhone(phone) {
   return true;
 }
 
-// ── BUILD SMS MESSAGE ─────────────────────────────────────────────────────────
+// ── BUILD SMS ─────────────────────────────────────────────────────────────────
 function buildSMS(contact) {
   const first = contact.firstNameRaw || contact.firstName || null;
   const name  = first ? `Hey ${first}` : 'Hey';
-  return `${name}, quick question — are your subs billing you accurately on every draw? Most GCs lose $8-15K per job without knowing it. Check it free: subdraw.com/login –Shawn. Reply STOP to opt out.`;
+
+  if (isMerchant) {
+    // Rotate through Edge 1 + Edge 3 templates
+    const templates = MERCHANT_SMS_TEMPLATES;
+    const tmpl = templates[Math.floor(Math.random() * templates.length)];
+    return tmpl.replace('{name}', name);
+  } else {
+    return `${name}, quick question — are your subs billing you accurately on every draw? Most GCs lose $8-15K per job without knowing it. Check it free: subdraw.com/login –Shawn. Reply STOP to opt out.`;
+  }
 }
 
 // ── FETCH UNSENT LEADS ────────────────────────────────────────────────────────
 async function fetchUnsentLeads() {
-  const contacts = [];
-  let startAfter = null, startAfterId = null, page = 1;
+  try {
+    const result = await callGHL('GET',
+      `/contacts/?locationId=${LOCATION_ID}&tags=${PROSPECT_TAG}&limit=50`
+    );
+    const contacts = result?.contacts || [];
 
-  while (true) {
-    let url = `/contacts/?locationId=${LOCATION_ID}&limit=100&query=gc-prospect`;
-    if (startAfter)   url += `&startAfter=${startAfter}`;
-    if (startAfterId) url += `&startAfterId=${startAfterId}`;
-
-    const data = await callGHL('GET', url);
-    const batch = data.contacts || [];
-    if (!batch.length) break;
-
-    for (const c of batch) {
+    return contacts.filter(c => {
       const tags = c.tags || [];
-      // Skip if already texted, opted out, or DND
-      if (tags.includes('sms-sent'))        continue;
-      if (tags.includes('do-not-contact'))  continue;
-      if (tags.includes('sms-unsubscribed')) continue;
-      if (c.dnd)                            continue;
-      // Must have a real phone
-      if (!isRealPhone(c.phone))            continue;
-      contacts.push(c);
-    }
-
-    if (!data.meta?.nextPage) break;
-    startAfter   = data.meta.startAfter;
-    startAfterId = data.meta.startAfterId;
-    page++;
-
-    await new Promise(r => setTimeout(r, 300));
-
-    // Safety cap — don't load more than 500 at a time
-    if (contacts.length >= 500) break;
+      return !tags.includes(SENT_TAG)
+          && !tags.includes('do-not-contact')
+          && isRealPhone(c.phone);
+    }).slice(0, BATCH_SIZE);
+  } catch(e) {
+    console.error('[Agent 39] fetchUnsentLeads error:', e.message);
+    return [];
   }
-
-  return contacts;
 }
 
-// ── SEND ONE SMS ──────────────────────────────────────────────────────────────
-async function sendFirstSMS(contact) {
-  const message = buildSMS(contact);
+// ── TAG AS SENT ───────────────────────────────────────────────────────────────
+async function markSent(contactId, currentTags) {
+  const newTags = [...new Set([...(currentTags || []), SENT_TAG])];
+  await callGHL('PUT', `/contacts/${contactId}`, { tags: newTags });
+}
 
-  await callGHL('POST', '/conversations/messages', {
-    type: 'SMS',
-    contactId: contact.id,
+// ── SEND SMS ──────────────────────────────────────────────────────────────────
+async function sendSMS(contact, message) {
+  return callGHL('POST', '/conversations/messages', {
+    type:       'SMS',
+    contactId:  contact.id,
+    locationId: LOCATION_ID,
+    message,
     fromNumber: FROM_NUMBER,
-    toNumber: contact.phone,
-    message
   });
-
-  // Tag as sent so nothing else touches this contact
-  await callGHL('POST', `/contacts/${contact.id}/tags`, {
-    tags: ['sms-sent', `sms-first-contact-${new Date().toISOString().split('T')[0]}`]
-  });
-
-  return message;
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 async function runFirstContactSMS() {
-  await pingDashboard(39, 'ok', 'first-contact-sms tick');
+  await pingDashboard(39, 'ok', `first-contact-sms tick — PRODUCT=${PRODUCT}`);
 
-  // Check if system is paused via dashboard
-  try {
-    const fetch2 = (await import('node-fetch')).default;
-    const pr = await fetch2(`${process.env.DASHBOARD_URL || 'https://dashboard-production-f04a.up.railway.app'}/api/pause-status`, {signal: AbortSignal.timeout(3000)});
-    const ps = await pr.json();
-    if (ps.paused) {
-      console.log('[Agent] System paused — skipping');
-      return 0;
-    }
-  } catch(e) { /* dashboard unreachable — continue */ }
-
-  // Only run on the primary orchestrator service — prevents 5 containers sending same SMS
-  if (process.env.SERVICE_ROLE && process.env.SERVICE_ROLE !== 'primary') {
-    console.log('[Agent 39] Non-primary service — skipping');
-    return { sent: 0, skipped: true };
-  }
-  const inWindow = isPrimeWindow();
-
-  if (!inWindow) {
-    console.log('[Agent 39] Outside prime window — skipping sends');
-    return { sent: 0, queued: 0, reason: 'outside_window' };
+  if (!isPrimeWindow()) {
+    console.log(`[Agent 39] Outside prime window — skipping (PRODUCT=${PRODUCT})`);
+    return { sent: 0, skipped: 0 };
   }
 
-  console.log('[Agent 39] Prime window active — checking for unsent leads...');
+  console.log(`[Agent 39] Prime window active — PRODUCT=${PRODUCT}`);
 
-  let unsent = [];
-  try {
-    unsent = await fetchUnsentLeads();
-  } catch(e) {
-    console.error('[Agent 39] Fetch error:', e.message);
-    return { sent: 0, error: e.message };
-  }
+  const leads = await fetchUnsentLeads();
+  console.log(`[Agent 39] ${leads.length} unsent leads found`);
 
-  console.log(`[Agent 39] Found ${unsent.length} unsent leads`);
+  if (leads.length === 0) return { sent: 0, skipped: 0 };
 
-  if (!unsent.length) {
-    console.log('[Agent 39] No new leads to contact');
-    return { sent: 0, queued: 0 };
-  }
-
-  // Cap per run so we don't spam if a huge batch comes in
-  const batch = unsent.slice(0, BATCH_SIZE);
   let sent = 0, failed = 0;
-  const sentPhones = new Set(); // dedup within this run
 
-  for (const contact of batch) {
-    const normalizedPhone = contact.phone.replace(/\D/g, '');
-
-    // Skip if we already sent to this number this run
-    if (sentPhones.has(normalizedPhone)) {
-      console.log(`[Agent 39] Skipping duplicate phone ${contact.phone}`);
-      continue;
-    }
-
+  for (const contact of leads) {
     try {
-      const msg = await sendFirstSMS(contact);
-      sentPhones.add(normalizedPhone);
+      const message = buildSMS(contact);
+      await sendSMS(contact, message);
+      await markSent(contact.id, contact.tags);
       sent++;
+      console.log(`[Agent 39] Sent to ${contact.firstName} ${contact.lastName} — ${contact.phone}`);
 
-      const name = contact.firstNameRaw || contact.companyName || contact.phone;
-      console.log(`[Agent 39] ✅ Sent to ${name} (${contact.companyName})`);
+      notifyDashboard('sms_sent', {
+        contact: contact.id,
+        product: PRODUCT,
+        template: isMerchant ? 'merchant-edge1-edge3' : 'subdraw-gc'
+      });
 
-      await notifyDashboard('sms_sent', {
-        contact: name,
-        company: contact.companyName,
-        phone: contact.phone,
-        trigger: 'first_contact'
-      }).catch(() => {});
-
+      // Pause between sends to avoid rate limits
+      await new Promise(r => setTimeout(r, DELAY_MS));
     } catch(e) {
+      console.error(`[Agent 39] Send failed for ${contact.id}: ${e.message}`);
       failed++;
-      console.error(`[Agent 39] Failed ${contact.phone}: ${e.message}`);
     }
-
-    await new Promise(r => setTimeout(r, DELAY_MS));
   }
 
-  const remaining = unsent.length - batch.length;
-
-  logRun('39-first-contact-sms', {
-    sent,
-    failed,
-    remaining,
-    window: 'prime'
-  });
-
-  console.log(`[Agent 39] Done — sent: ${sent}, failed: ${failed}, remaining queue: ${remaining}`);
-  return { sent, failed, remaining };
+  logRun('39-first-contact-sms', { sent, failed, product: PRODUCT });
+  return { sent, failed };
 }
 
 module.exports = { runFirstContactSMS };
-if (require.main === module) {
-  runFirstContactSMS()
-    .then(r => console.log('[Agent 39] Complete:', r))
-    .catch(e => console.error('[Agent 39] Fatal:', e.message));
-}
