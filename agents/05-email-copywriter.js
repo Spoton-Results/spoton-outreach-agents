@@ -1,19 +1,15 @@
 /**
- * Agent 05: Email Copywriter — REBUILT WITH INVOICE PROTECTION ANGLE
- * 
- * OLD ANGLE: "save time on draw approvals" (weak — time savings is nice-to-have)
- * NEW ANGLE: "protect your margins from subcontractor overbilling" (urgent — financial risk)
+ * Agent 05: Email Copywriter — PRODUCT-AWARE
  *
- * The canonical positioning: "If SubDraw catches one invoice overrun this year, it paid for itself."
- * Every email leads with risk/protection, not efficiency/speed.
- *
- * CTA is always subdraw.com/login — no calls, no scheduling
+ * SubDraw:  Invoice protection angle for GC owners
+ * Merchant: Free statement audit + multi-processor fit (Edge 1 + Edge 3)
  */
 require('dotenv').config({ path: './config/.env' });
 const { callClaude, logRun } = require('../utils/helpers');
-const icp = require('../config/icp.json');
+const { isMerchant, PRODUCT, MERCHANT_EMAIL_SYSTEM } = require('../utils/product-config');
 
-const SYSTEM = `You are a direct-response copywriter for SubDraw — construction draw management and invoice protection for general contractors.
+// ── SUBDRAW SYSTEM PROMPT (unchanged) ─────────────────────────────────────────
+const SUBDRAW_SYSTEM = `You are a direct-response copywriter for SubDraw — construction draw management and invoice protection for general contractors.
 
 POSITIONING: SubDraw protects GCs from costly subcontractor invoice mistakes and billing disputes.
 It replaces spreadsheets, email chains, paper pay apps, and manual retainage tracking.
@@ -34,7 +30,7 @@ NEVER DO: vague CTAs, multiple pain points, generic openers, corporate language
 
 PRICING CONTEXT (use when relevant):
 - Starter $149/mo — up to 10 active subcontracts
-- Professional $299/mo — up to 30 subcontracts  
+- Professional $299/mo — up to 30 subcontracts
 - Scale $599/mo — unlimited subcontracts
 - Subcontractors always free
 - 7-day free trial
@@ -42,67 +38,94 @@ PRICING CONTEXT (use when relevant):
 
 Return JSON only.`;
 
+// ── MERCHANT SYSTEM PROMPT (Edge 1 + Edge 3) ──────────────────────────────────
+// Imported from product-config.js — MERCHANT_EMAIL_SYSTEM
+
+// ── EMAIL SEQUENCE BUILDER ────────────────────────────────────────────────────
 async function writeSequence(prospect) {
+  const SYSTEM = isMerchant ? MERCHANT_EMAIL_SYSTEM : SUBDRAW_SYSTEM;
+
   const { personalization, intel, screening } = prospect;
 
-  // Pull winning variants if A/B analyzer has run
   let winningPatterns = '';
   try {
     const fs = require('fs');
     const variants = JSON.parse(fs.readFileSync('./config/winning-variants.json', 'utf8'));
     winningPatterns = 'Winning patterns from past campaigns: ' + JSON.stringify(variants.winning_subject_patterns || []);
-  } catch(e) { /* no variants yet — first run */ }
+  } catch(e) { /* no variants yet */ }
 
-  const prompt = `Write a 4-email cold outreach sequence for this GC:
-
-Contact: ${prospect.name}, ${prospect.title} at ${prospect.organization_name}
+  const contactContext = isMerchant
+    ? `Business: ${prospect.organization_name}
+Owner: ${prospect.first_name || ''} ${prospect.last_name || ''}, ${prospect.title || 'Owner'}
+Industry: ${prospect.industry || 'retail/restaurant'}
 Location: ${prospect.city}, ${prospect.state}
-Hook: "${personalization?.hook}"
-Hook connects to: ${personalization?.connects_to_pain || 'invoice and billing pain'}
-Current draw tool: ${intel?.current_tool || 'spreadsheets'}
-Estimated active subcontracts: ${intel?.estimated_active_subcontracts || screening?.sub_count_estimate || 'unknown'}
-Primary risk: ${intel?.primary_risk || screening?.pain_point || 'subcontractor invoice errors'}
-Approach angle: ${intel?.approach_angle || 'invoice protection'}
-Recommended plan: ${intel?.recommended_plan || screening?.recommended_plan || 'starter_149'}
+Estimated processor: ${prospect.estimated_processor || 'unknown — assume Square or Stripe'}
+Hook: "${personalization?.hook || 'processing fees eating into margin'}"`
+    : `Contact: ${prospect.name}, ${prospect.title} at ${prospect.organization_name}
+Location: ${prospect.city}, ${prospect.state}
+Hook: "${personalization?.hook}"`;
+
+  const sequenceInstructions = isMerchant
+    ? `Write a 4-email cold outreach sequence for this merchant:
+
+${contactContext}
+
+SEQUENCE RULES:
+Email 1 — Edge 1 lead: free statement audit hook. Subject under 6 words. Body under 100 words. CTA: send your last statement → spotonresults.com/audit
+Email 2 — Social proof: "We audited 47 statements last month. Average was overpaying $380/mo." Under 75 words. Same CTA.
+Email 3 — Edge 3: multi-processor fit angle. "We work with 6 processors — we match your business type, not just find the cheapest rate." Under 75 words.
+Email 4 — Last contact: honest close. "I won't follow up after this." Under 60 words.
+
 ${winningPatterns}
-
-Write 4 emails. Each uses a DIFFERENT angle from these invoice protection themes:
-- Email 1: overbilling risk (subs billing more than approved)
-- Email 2: retainage errors (miscalculations that cost thousands)
-- Email 3: missing documentation (lien waivers, change order backup)
-- Email 4: breakup — leave door open, reference the risk one last time
-
-Rules:
-- Email 1: under 100 words, lead with hook, ONE risk, CTA to subdraw.com/login
-- Emails 2-3: under 75 words, fresh angle, different CTA phrasing
-- Email 4: under 50 words, genuine breakup, no hard sell
-
-CTA variations to use:
-- "Takes 8 minutes to see — subdraw.com/login"
-- "If it catches one overrun this year, it paid for itself — subdraw.com/login"
-- "Try it free — subdraw.com/login"
-- "See how it works — subdraw.com/login"
 
 Return JSON:
 {
-  "email_1": { "subject": "...", "body": "..." },
-  "email_2": { "subject": "...", "body": "..." },
-  "email_3": { "subject": "...", "body": "..." },
-  "email_4": { "subject": "...", "body": "..." }
-}`;
+  "emails": [
+    { "subject": "...", "body": "..." },
+    { "subject": "...", "body": "..." },
+    { "subject": "...", "body": "..." },
+    { "subject": "...", "body": "..." }
+  ]
+}`
+    : `Write a 4-email cold outreach sequence for this GC:
 
-  try { return JSON.parse(await callClaude(SYSTEM, prompt, { quality: true })); } catch(e) { console.error('[Agent 05] Parse error:', e.message); return null; }
+${contactContext}
+Company: ${prospect.organization_name}
+Pain: ${screening?.pain_point || intel?.primary_pain || 'subcontractor invoice disputes'}
+
+SEQUENCE RULES:
+Email 1 — Invoice risk hook, under 100 words, CTA: subdraw.com/login
+Email 2 — Social proof, under 75 words
+Email 3 — Feature: retainage tracking or lien waiver angle, under 75 words
+Email 4 — Last contact close, under 60 words
+
+${winningPatterns}
+
+Return JSON: { "emails": [{ "subject": "...", "body": "..." }] }`;
+
+  try {
+    const raw = await callClaude(SYSTEM, sequenceInstructions, { quality: true });
+    const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('[Agent 05] Copywriter error:', e.message);
+    return null;
+  }
 }
 
 async function writeSequenceBatch(prospects) {
-  console.log('[Agent 05] Writing invoice-protection sequences for ' + prospects.length + ' prospects...');
-  const written = [];
+  console.log(`[Agent 05] Writing sequences for ${prospects.length} prospects — PRODUCT=${PRODUCT}`);
+  const results = [];
+
   for (const p of prospects) {
-    const emails = await writeSequence(p);
-    written.push({ ...p, emails });
+    const seq = await writeSequence(p);
+    if (seq) {
+      results.push({ ...p, emailSequence: seq.emails });
+    }
   }
-  logRun('05-email-copywriter', { sequences_written: written.length });
-  return written;
+
+  logRun('05-email-copywriter', { written: results.length, product: PRODUCT });
+  return results;
 }
 
-module.exports = { writeSequenceBatch };
+module.exports = { writeSequenceBatch, writeSequence };
