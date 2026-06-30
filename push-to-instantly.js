@@ -308,3 +308,12 @@ async function main() {
   log(` Already queued     : ${skipped} (skipped)`);
   log(` No email           : ${noEmail} (skipped)`);
   log('=======================================================');
+}
+
+main().catch(e => {
+  const detail = e.response
+    ? `HTTP ${e.response.status} — ${JSON.stringify(e.response.data)}`
+    : e.message;
+  console.error(`FATAL: ${detail}`);
+  process.exit(1);
+});
