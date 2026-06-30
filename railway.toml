@@ -2,6 +2,5 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "node orchestrator.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
