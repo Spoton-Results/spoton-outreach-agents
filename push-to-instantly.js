@@ -104,20 +104,19 @@ async function detectGHLVersion() {
 }
 
 // ── Page through all GHL contacts (v2) ───────────────────────────────────────
+// GHL v2 uses cursor-based pagination via startAfterId, NOT skip/offset
 
 async function* getAllContactsV2() {
-  let page = 1;
-  let total = 0;
-  let fetched = 0;
+  let startAfterId = null;
+  let total        = 0;
+  let fetched      = 0;
+  let page         = 1;
 
   while (true) {
-    const resp = await ghlV2.get('/contacts/', {
-      params: {
-        locationId: GHL_LOCATION_ID,
-        limit:      BATCH_SIZE,
-        skip:       (page - 1) * BATCH_SIZE
-      }
-    });
+    const params = { locationId: GHL_LOCATION_ID, limit: BATCH_SIZE };
+    if (startAfterId) params.startAfterId = startAfterId;
+
+    const resp = await ghlV2.get('/contacts/', { params });
 
     const contacts = resp.data?.contacts || [];
     total = resp.data?.total || total;
@@ -130,7 +129,10 @@ async function* getAllContactsV2() {
     }
 
     log(`  Fetched v2 page ${page} (${fetched}/${total})`);
-    if (fetched >= total || contacts.length < BATCH_SIZE) break;
+    if (contacts.length < BATCH_SIZE) break;
+
+    // Cursor: use last contact's ID for next page
+    startAfterId = contacts[contacts.length - 1].id;
     page++;
     await sleep(300);
   }
@@ -306,12 +308,3 @@ async function main() {
   log(` Already queued     : ${skipped} (skipped)`);
   log(` No email           : ${noEmail} (skipped)`);
   log('=======================================================');
-}
-
-main().catch(e => {
-  const detail = e.response
-    ? `HTTP ${e.response.status} — ${JSON.stringify(e.response.data)}`
-    : e.message;
-  console.error(`FATAL: ${detail}`);
-  process.exit(1);
-});
