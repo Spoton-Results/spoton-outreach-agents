@@ -43,21 +43,50 @@ var ghlV2 = axios.create({
   timeout: 20000
 });
 
+async function ghlGetWithRetry(path, params) {
+  var retries = 0;
+  var maxRetries = 8;
+  while (true) {
+    try {
+      return await ghlV2.get(path, { params: params });
+    } catch (err) {
+      var status = err.response && err.response.status;
+      if (status === 429 && retries < maxRetries) {
+        retries++;
+        var wait = 10000 * retries;
+        log('  Rate limited (429). Waiting ' + (wait / 1000) + 's before retry ' + retries + '/' + maxRetries + '...');
+        await sleep(wait);
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 async function getAllContactsV2() {
   var contacts = [];
   var startAfterId = null;
   var page = 1;
-  var total = 0;
+  var fetched = 0;
 
   while (true) {
     var params = { locationId: GHL_LOCATION_ID, limit: BATCH_SIZE };
     if (startAfterId) params.startAfterId = startAfterId;
 
-    var resp = await ghlV2.get('/contacts/', { params: params });
+    var resp = await ghlGetWithRetry('/contacts/', params);
     var batch = (resp.data && resp.data.contacts) || [];
-    total = (resp.data && resp.data.total) || total;
 
-    log('  Page ' + page + ': got ' + batch.length + ' contacts (total: ' + total + ')');
+    fetched += batch.length;
+    log('  Page ' + page + ': got ' + batch.length + ' contacts (fetched so far: ' + fetched + ')');
+
+    if (page === 1 && batch.length > 0) {
+      log('  First contact sample: ' + JSON.stringify({
+        id:    batch[0].id,
+        email: batch[0].email,
+        tags:  batch[0].tags
+      }));
+    }
+
     if (!batch.length) break;
 
     contacts = contacts.concat(batch);
@@ -65,7 +94,7 @@ async function getAllContactsV2() {
     if (batch.length < BATCH_SIZE) break;
     startAfterId = batch[batch.length - 1].id;
     page++;
-    await sleep(300);
+    await sleep(600);
   }
   return contacts;
 }
@@ -126,7 +155,12 @@ async function main() {
 
   var skipped = allContacts.length - eligible.length;
   log('Eligible (with email, not tagged): ' + eligible.length);
-  log('Skipped: ' + skipped);
+  log('Skipped (no email or already tagged): ' + skipped);
+
+  if (eligible.length === 0) {
+    log('No eligible contacts. Done.');
+    return;
+  }
 
   var pushed = 0;
   for (var i = 0; i < eligible.length; i += PUSH_SIZE) {
@@ -140,7 +174,10 @@ async function main() {
         await sleep(50);
       }
     } catch (err) {
-      log('  ERROR batch ' + i + ': ' + err.message);
+      var detail = err.response
+        ? 'HTTP ' + err.response.status + ' -- ' + JSON.stringify(err.response.data)
+        : err.message;
+      log('  ERROR batch ' + i + ': ' + detail);
     }
     await sleep(500);
   }
