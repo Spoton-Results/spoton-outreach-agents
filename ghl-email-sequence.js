@@ -39,7 +39,7 @@ const { logRun, pingDashboard, notifyDashboard, sleep } = require('./utils/helpe
 // ── Config ────────────────────────────────────────────────────────────────────
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID || 'oe1TpmlDynQGFNdYLkaK';
-const DAILY_LIMIT     = parseInt(process.env.DAILY_LIMIT  || '50');
+const DAILY_LIMIT     = Math.max(1, parseInt(process.env.DAILY_LIMIT || '50') || 50); // NaN-safe
 const PAGE_SIZE       = 100;
 const DRY_RUN         = process.env.DRY_RUN === 'true';
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
@@ -161,6 +161,10 @@ async function ghlFetch(endpoint, method = 'GET', body = null, queryParams = {})
       }
     }
   }
+  // All MAX_RETRIES exhausted on 429/5xx — the loop continued each time without throwing.
+  // Without this throw, the function returns undefined, fetchAllContacts gets [], and the
+  // cron silently sends 0 emails while Railway shows SUCCESS. Throw to surface the failure.
+  throw new Error(`GHL fetch failed after ${MAX_RETRIES} retries: ${method} ${endpoint}`);
 }
 
 function log(msg) {
@@ -275,6 +279,12 @@ async function sendSeqEmail(contact, step, state) {
   }
 
   try {
+    // Tag FIRST, send second — if the PUT fails after sending, the contact would get
+    // re-emailed next run (no step tag = new enrollment). Tagged-but-not-emailed is
+    // the better failure mode (next run catches it); emailed-but-untagged causes duplicates.
+    const mergedTags = [...new Set([...state.tags, ...tagsToAdd])];
+    await ghlFetch(`/contacts/${contact.id}`, 'PUT', { tags: mergedTags });
+
     // Send via GHL conversations API
     await ghlFetch('/conversations/messages', 'POST', {
       type: 'Email',
@@ -283,10 +293,6 @@ async function sendSeqEmail(contact, step, state) {
       body: bodyText,
       html: htmlBody,
     });
-
-    // Merge new tags with existing — GHL PUT replaces all tags, so we must include current ones
-    const mergedTags = [...new Set([...state.tags, ...tagsToAdd])];
-    await ghlFetch(`/contacts/${contact.id}`, 'PUT', { tags: mergedTags });
 
     log(`  ✓ step=${step} → ${contact.email} (${firstName})`);
     return true;
@@ -338,7 +344,7 @@ async function main() {
   outer:
   for (const step of priority) {
     for (const { contact, state } of queues[step]) {
-      if (sent + failed >= DAILY_LIMIT) break outer;
+      if (sent >= DAILY_LIMIT) break outer; // failures don't eat into the send budget
       const ok = await sendSeqEmail(contact, step, state);
       if (ok) sent++; else failed++;
       await sleep(250);  // ~4 req/s to GHL
