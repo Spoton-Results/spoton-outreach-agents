@@ -27,7 +27,36 @@ const { classifyReplies, classifySingleReply } = require('../agents/10-reply-cla
 const { sendDemoLink }      = require('../agents/11-demo-link-sender');
 const { scheduleFollowUp }  = require('../agents/32-followup-scheduler');
 const { handleObjection }   = require('../agents/13-objection-handler');
-const { notifyDashboard, logRun } = require('../utils/helpers');
+const { notifyDashboard, logRun, callGHL } = require('../utils/helpers');
+
+// ── Stop the GHL email sequence for a contact (add gc-seq-stop tag) ──────────
+// Called on any real reply so ghl-email-sequence.js skips them next run.
+async function stopGhlSequence(contactId, fromEmail) {
+  try {
+    let id = contactId;
+    // If we only have email (Instantly reply), look up the contact
+    if (!id && fromEmail) {
+      const locationId = process.env.GHL_LOCATION_ID || '';
+      const data = await callGHL('GET', `/contacts/?email=${encodeURIComponent(fromEmail)}&locationId=${locationId}`);
+      id = data?.contacts?.[0]?.id;
+    }
+    if (!id) return;
+
+    // Fetch existing tags so we don't wipe them
+    const contact = await callGHL('GET', `/contacts/${id}`);
+    const existing = contact?.contact?.tags || contact?.tags || [];
+
+    // Only update if not already stopped
+    if (existing.includes('gc-seq-stop')) return;
+    if (!existing.includes('gc-seq-enrolled')) return; // not in sequence — skip
+
+    const merged = [...new Set([...existing, 'gc-seq-stop'])];
+    await callGHL('PUT', `/contacts/${id}`, { tags: merged });
+    console.log(`[ReplyServer] gc-seq-stop → ${fromEmail || id}`);
+  } catch(e) {
+    console.error('[ReplyServer] stopGhlSequence error:', e.message);
+  }
+}
 
 const PORT = process.env.REPLY_SERVER_PORT || 3001;
 const MAX_BODY_BYTES = 1_000_000; // 1MB -- reject oversized payloads
@@ -88,6 +117,17 @@ async function processReply(data) {
         timestamp: payload.dateAdded || new Date().toISOString(),
         source: 'sms'
       };
+    } else if (source === 'ghl_email') {
+      reply = {
+        id: payload.messageId || payload.id,
+        from_email: payload.from_email || payload.email || '',
+        from_name:  payload.from_name || payload.contactName || '',
+        contact_id: payload.contact_id || payload.contactId || '',
+        subject:    payload.subject || '(no subject)',
+        body:       payload.body || '',
+        timestamp:  payload.dateAdded || new Date().toISOString(),
+        source: 'email',
+      };
     } else {
       return;
     }
@@ -119,6 +159,9 @@ async function processReply(data) {
       console.log('[ReplyServer] Auto-reply " skipping');
       return;
     }
+
+    // Stop GHL email sequence for any real reply (email or SMS)
+    await stopGhlSequence(reply.contact_id, reply.from_email);
 
     if (category === 'unsubscribe') {
       // GHL tag update only
@@ -233,13 +276,38 @@ const server = http.createServer(async (req, res) => {
     const payload = await parseBody(req);
     const type = payload.type || payload.messageType || '';
 
-    // Only process inbound SMS (replies from GCs)
-    if (type.includes('SMS') || type.includes('sms') || payload.direction === 'inbound') {
-      if (payload.direction === 'inbound' || type.includes('Inbound') || payload.messageType === 'TYPE_SMS') {
+    // Inbound SMS reply
+    if (type.includes('SMS') || type.includes('sms') || payload.messageType === 'TYPE_SMS') {
+      if (payload.direction === 'inbound' || type.includes('Inbound')) {
         replyQueue.push({ source: 'ghl_sms', payload });
         setImmediate(processQueue);
-        console.log('[ReplyServer] Queued SMS reply " queue size: ' + replyQueue.length);
+        console.log('[ReplyServer] Queued SMS reply — queue size: ' + replyQueue.length);
       }
+      return;
+    }
+
+    // Inbound EMAIL reply (GHL fires this when a GC replies to our outbound email)
+    const isInboundEmail = (
+      (type.includes('EMAIL') || type.includes('Email') || payload.messageType === 'TYPE_EMAIL') &&
+      (payload.direction === 'inbound' || payload.direction === 'INBOUND')
+    ) || (
+      // GHL InboundMessage event
+      type === 'InboundMessage' && payload.messageType === 'TYPE_EMAIL'
+    );
+
+    if (isInboundEmail && payload.body) {
+      replyQueue.push({
+        source: 'ghl_email',
+        payload: {
+          ...payload,
+          contact_id: payload.contactId || payload.contact_id,
+          from_email: payload.email || payload.fromEmail || payload.from || '',
+          from_name:  payload.contactName || payload.from_name || '',
+          body:       payload.body,
+        }
+      });
+      setImmediate(processQueue);
+      console.log('[ReplyServer] Queued GHL email reply — queue size: ' + replyQueue.length);
     }
     return;
   }
