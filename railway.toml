@@ -2,6 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "npm install axios dotenv && node push-to-instantly.js"
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+# No default startCommand — each Railway service sets its own start command as a service-level override.
+# Having a startCommand here caused Railway to run push-to-instantly.js on every ON_FAILURE restart
+# regardless of which service actually crashed. Removed to prevent that cascade.
+restartPolicyType = "NEVER"

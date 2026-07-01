@@ -188,9 +188,17 @@ async function main() {
 }
 
 main().catch(function(e) {
+  var status = e.response && e.response.status;
   var detail = e.response
-    ? 'HTTP ' + e.response.status + ' -- ' + JSON.stringify(e.response.data)
+    ? 'HTTP ' + status + ' -- ' + JSON.stringify(e.response.data)
     : e.message;
+  if (status === 429) {
+    // GHL rate-limited us even after all retries. Exit 0 (not 1) so Railway does
+    // not restart-loop this service and cascade 429s across other services.
+    // The next scheduled run will retry automatically.
+    console.warn('WARN: GHL rate-limited after all retries — exiting cleanly. Will retry on next run.');
+    process.exit(0);
+  }
   console.error('FATAL: ' + detail);
   process.exit(1);
 });
