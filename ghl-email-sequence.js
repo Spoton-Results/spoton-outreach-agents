@@ -171,11 +171,16 @@ function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
-// ── Fetch ALL GHL contacts with email (cursor pagination) ─────────────────────
-async function fetchAllContacts() {
-  const contacts = [];
+// ── Fetch + classify contacts in one pass with early exit ────────────────────
+// Classifies contacts into step queues inline during pagination.
+// Stops fetching pages as soon as every step queue has ≥ DAILY_LIMIT candidates,
+// avoiding a full 180-page scan when queues fill up quickly.
+async function fetchAndClassifyContacts() {
+  const queues  = { 1: [], 2: [], 3: [], 4: [] };
+  const skipped = { stop: 0, complete: 0, notDue: 0 };
   let startAfterId = null;
   let page = 0;
+  let totalFetched = 0;
 
   while (true) {
     page++;
@@ -184,21 +189,38 @@ async function fetchAllContacts() {
 
     const data = await ghlFetch('/contacts/', 'GET', null, params);
     const batch = data?.contacts || [];
-
-    if (page % 25 === 0) {
-      log(`  Page ${page}: ${contacts.length + batch.length} contacts fetched`);
-    }
+    totalFetched += batch.length;
 
     for (const c of batch) {
-      if (c.email) contacts.push(c);
+      if (!c.email) continue;
+      const state = parseSeqState(c);
+      if (state.stop)     { skipped.stop++;     continue; }
+      if (state.complete) { skipped.complete++;  continue; }
+      const nextStep = getNextStep(state);
+      if (nextStep === null) { skipped.notDue++; continue; }
+      queues[nextStep].push({ contact: c, state });
+    }
+
+    if (page % 25 === 0) {
+      const q = queues;
+      log(`  Page ${page}: ${totalFetched} fetched — queued s1:${q[1].length} s2:${q[2].length} s3:${q[3].length} s4:${q[4].length}`);
     }
 
     if (batch.length < PAGE_SIZE) break;
+
+    // Early exit: stop paginating once every queue has more than enough candidates.
+    // In practice this kicks in after ~5-20 pages once the sequence is running.
+    const allFull = [1, 2, 3, 4].every(s => queues[s].length >= DAILY_LIMIT);
+    if (allFull) {
+      log(`  Early exit at page ${page} (${totalFetched} contacts scanned) — all queues ≥ ${DAILY_LIMIT}`);
+      break;
+    }
+
     startAfterId = batch[batch.length - 1].id;
-    await sleep(300);  // respect GHL rate limits
+    await sleep(200); // 200ms between pages (~5 pages/sec)
   }
 
-  return contacts;
+  return { queues, skipped, totalFetched };
 }
 
 // ── Parse sequence state from a contact's tags ────────────────────────────────
@@ -311,26 +333,10 @@ async function main() {
 
   await pingDashboard(50, 'ok', `ghl-email-sequence starting — limit=${DAILY_LIMIT}`);
 
-  // ── Step 1: Fetch all contacts ──────────────────────────────────────────────
-  log('Fetching contacts from GHL...');
-  const allContacts = await fetchAllContacts();
-  log(`Total contacts with email: ${allContacts.length}`);
-
-  // ── Step 2: Classify into step queues ─────────────────────────────────────
-  const queues = { 1: [], 2: [], 3: [], 4: [] };
-  const skipped = { stop: 0, complete: 0, notDue: 0 };
-
-  for (const c of allContacts) {
-    const state = parseSeqState(c);
-
-    if (state.stop)    { skipped.stop++;     continue; }
-    if (state.complete){ skipped.complete++;  continue; }
-
-    const nextStep = getNextStep(state);
-    if (nextStep === null) { skipped.notDue++; continue; }
-
-    queues[nextStep].push({ contact: c, state });
-  }
+  // ── Step 1+2: Fetch + classify in one pass (early exit when queues are full) ─
+  log('Fetching + classifying contacts from GHL...');
+  const { queues, skipped, totalFetched } = await fetchAndClassifyContacts();
+  log(`Scanned ${totalFetched} contacts`);
 
   const totalQueued = queues[1].length + queues[2].length + queues[3].length + queues[4].length;
   log(`Ready to send — step1:${queues[1].length} step2:${queues[2].length} step3:${queues[3].length} step4:${queues[4].length} (total=${totalQueued})`);

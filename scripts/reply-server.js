@@ -31,6 +31,7 @@
 require('dotenv').config({ path: './config/.env' });
 
 const http = require('http');
+const fs   = require('fs');
 const { classifyReplies, classifySingleReply } = require('../agents/10-reply-classifier');
 const { sendDemoLink }     = require('../agents/11-demo-link-sender');
 const { scheduleFollowUp } = require('../agents/32-followup-scheduler');
@@ -265,11 +266,33 @@ function verifySignature(rawBody, signature, secret) {
 // Polls GET /conversations/search every 15 min for inbound emails.
 // No manual GHL workflow required.
 //
-// FIX [CRITICAL]: ghlPollSeen key is added AFTER a successful body fetch.
-// Previously the key was added before the fetch — a transient GHL error would
-// permanently mark the conversation as seen, preventing gc-seq-stop from ever
-// being applied to that contact.
-const ghlPollSeen = new Set();
+// ghlPollSeen persists to /tmp/ghl-poll-seen.json so restarts/redeploys don't
+// re-process the last 50 conversations and double-fire agents 11/13.
+const POLL_SEEN_FILE = '/tmp/ghl-poll-seen.json';
+
+function loadGhlPollSeen() {
+  try {
+    const raw = fs.readFileSync(POLL_SEEN_FILE, 'utf8');
+    const arr = JSON.parse(raw);
+    const seen = new Set(Array.isArray(arr) ? arr : []);
+    console.log('[ReplyServer] Loaded', seen.size, 'seen GHL conversation keys from disk');
+    return seen;
+  } catch {
+    return new Set(); // file missing on first run — that's fine
+  }
+}
+
+function saveGhlPollSeen(seen) {
+  try {
+    // Keep last 2000 entries to avoid unbounded file growth
+    const arr = [...seen].slice(-2000);
+    fs.writeFileSync(POLL_SEEN_FILE, JSON.stringify(arr));
+  } catch(e) {
+    console.error('[pollGhlEmailReplies] Could not save seen file:', e.message);
+  }
+}
+
+const ghlPollSeen = loadGhlPollSeen();
 
 async function pollGhlEmailReplies() {
   try {
@@ -301,9 +324,15 @@ async function pollGhlEmailReplies() {
         continue; // do NOT mark seen — retry next cycle
       }
 
-      // Mark seen only after successful body fetch
+      // Mark seen only after successful body fetch, then persist to disk
       ghlPollSeen.add(msgKey);
-      if (ghlPollSeen.size > 5000) ghlPollSeen.clear();
+      if (ghlPollSeen.size > 2000) {
+        // Trim to last 2000 before saving to keep file small
+        const trimmed = [...ghlPollSeen].slice(-2000);
+        ghlPollSeen.clear();
+        trimmed.forEach(k => ghlPollSeen.add(k));
+      }
+      saveGhlPollSeen(ghlPollSeen);
 
       if (!body || body.trim().length < 3) continue;
 
