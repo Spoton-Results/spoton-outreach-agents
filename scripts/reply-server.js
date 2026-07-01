@@ -343,6 +343,70 @@ setInterval(async () => {
   }
 }, 30 * 60 * 1000);
 
+// ── GHL email reply poller ───────────────────────────────────────────────────
+// Polls GHL conversations every 15 min for inbound emails from gc-seq-enrolled
+// contacts. Replaces any GHL workflow requirement — no manual setup needed.
+const ghlPollSeen = new Set();
+
+async function pollGhlEmailReplies() {
+  try {
+    const locationId = process.env.GHL_LOCATION_ID || '';
+    if (!locationId) return;
+
+    // Fetch recent conversations (last 50, unread + read, all types)
+    const data = await callGHL('GET',
+      `/conversations/search?locationId=${locationId}&limit=50&sort=desc&sortBy=last_message_date`
+    );
+    const conversations = data?.conversations || [];
+
+    for (const conv of conversations) {
+      // Only care about email conversations with an inbound last message
+      if (conv.lastMessageType !== 'TYPE_EMAIL') continue;
+      if (conv.lastMessageDirection !== 'inbound') continue;
+
+      const msgKey = conv.id + ':' + conv.lastMessageDate;
+      if (ghlPollSeen.has(msgKey)) continue;
+      if (ghlPollSeen.size > 5000) ghlPollSeen.clear();
+      ghlPollSeen.add(msgKey);
+
+      // Fetch the actual message body
+      let body = '';
+      try {
+        const msgs = await callGHL('GET', `/conversations/${conv.id}/messages?limit=5`);
+        const inbound = (msgs?.messages || []).find(m =>
+          m.direction === 'inbound' && m.messageType === 'TYPE_EMAIL'
+        );
+        body = inbound?.body || inbound?.text || '';
+      } catch(e) { /* skip if can't fetch */ }
+
+      if (!body || body.trim().length < 3) continue;
+
+      console.log('[GHLPoll] Inbound email from contact', conv.contactId, '— queuing');
+      replyQueue.push({
+        source: 'ghl_email',
+        payload: {
+          contact_id: conv.contactId,
+          contactId:  conv.contactId,
+          from_email: conv.email || '',
+          from_name:  conv.fullName || '',
+          subject:    '(GHL email reply)',
+          body,
+          dateAdded:  conv.lastMessageDate,
+          messageId:  conv.id + ':' + conv.lastMessageDate,
+        }
+      });
+      setImmediate(processQueue);
+    }
+  } catch(e) {
+    console.error('[GHLPoll] Error:', e.message);
+  }
+}
+
+// Poll every 15 minutes
+setInterval(pollGhlEmailReplies, 15 * 60 * 1000);
+// Also run once at startup (after 60s to let server settle)
+setTimeout(pollGhlEmailReplies, 60 * 1000);
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[ReplyServer] Shutting down...');
